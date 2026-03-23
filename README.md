@@ -5,9 +5,9 @@
 ## 实机效果
 
 <div style="display: flex; gap: 10px;">
-  <img width="33%" alt="CleanShot 2026-03-23 at 14 48 53@2x" src="https://github.com/user-attachments/assets/0df1eb2e-9c77-4edc-9c7b-5fceec860df3" />
-  <img width="33%" alt="CleanShot 2026-03-23 at 14 52 26@2x" src="https://github.com/user-attachments/assets/16b07fb2-9a58-4516-884e-8f4ecd25c342" />
-  <img width="33%" alt="CleanShot 2026-03-23 at 14 54 24@2x" src="https://github.com/user-attachments/assets/e61703a9-04a5-4deb-8f87-fc61d914849e" />
+  <img width="32%" alt="CleanShot 2026-03-23 at 14 48 53@2x" src="https://github.com/user-attachments/assets/0df1eb2e-9c77-4edc-9c7b-5fceec860df3" />
+  <img width="32%" alt="CleanShot 2026-03-23 at 14 52 26@2x" src="https://github.com/user-attachments/assets/16b07fb2-9a58-4516-884e-8f4ecd25c342" />
+  <img width="32%" alt="CleanShot 2026-03-23 at 14 54 24@2x" src="https://github.com/user-attachments/assets/e61703a9-04a5-4deb-8f87-fc61d914849e" />
 </div>
 
 ## 功能
