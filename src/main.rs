@@ -2,7 +2,7 @@
 
 use eframe::egui;
 use sculk::persist::{self, Profile};
-use sculk::tunnel::{IrohTunnel, SecretKey, Ticket, TunnelConfig, TunnelEvent};
+use sculk::tunnel::{HostConfig, IrohTunnel, JoinConfig, SecretKey, Ticket, TunnelEvent};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -161,11 +161,9 @@ impl App {
             Some(self.password.clone())
         };
         let max_players: Option<u32> = self.max_players.parse().ok();
-        let config = TunnelConfig {
-            password,
-            max_players,
-            ..Default::default()
-        };
+        let config = HostConfig::default()
+            .password(password)
+            .max_players(max_players);
         let tx = self.ui_tx.clone();
         let secret_key = self.secret_key.clone();
         let relay_url = self.profile.resolve_relay_url(None).ok().unwrap_or(None);
@@ -200,10 +198,8 @@ impl App {
         } else {
             Some(self.join_password.clone())
         };
-        let config = TunnelConfig {
-            password,
-            ..Default::default()
-        };
+        let config = JoinConfig::default()
+            .password(password);
         let tx = self.ui_tx.clone();
 
         self.running = true;
