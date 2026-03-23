@@ -225,7 +225,10 @@ fn format_event(event: &TunnelEvent) -> String {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll();
-        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+
+        if self.running {
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        }
 
         ui::render_header(self, ctx);
 
