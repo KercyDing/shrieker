@@ -87,7 +87,11 @@ fn main() -> eframe::Result<()> {
             style.visuals.widgets.hovered.corner_radius = r;
             style.visuals.widgets.active.corner_radius = r;
             ctx.set_style(style);
-            Ok(Box::new(app::App::new(rt)))
+            let app = app::App::new(rt);
+            if !app.dark_mode {
+                ctx.set_visuals(egui::Visuals::light());
+            }
+            Ok(Box::new(app))
         }),
     )
 }

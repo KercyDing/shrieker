@@ -59,6 +59,8 @@ impl App {
         let (ui_tx, ui_rx) = mpsc::unbounded_channel();
 
         let ps = services::persist::load();
+        let prefs = services::persist::load_prefs();
+        rust_i18n::set_locale(&prefs.locale);
 
         let mut logs = ps.errors;
         if logs.is_empty() {
@@ -93,7 +95,7 @@ impl App {
             relay_custom,
             relay_url,
             connections: Vec::new(),
-            dark_mode: true,
+            dark_mode: prefs.dark_mode,
         }
     }
 
@@ -205,6 +207,7 @@ impl App {
         } else {
             rust_i18n::set_locale("zh-CN");
         }
+        services::persist::save_prefs(self.dark_mode, &rust_i18n::locale());
     }
 
     /// 切换主题。
@@ -215,6 +218,7 @@ impl App {
         } else {
             ctx.set_visuals(egui::Visuals::light());
         }
+        services::persist::save_prefs(self.dark_mode, &rust_i18n::locale());
     }
 }
 
