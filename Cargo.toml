@@ -1,14 +1,14 @@
 [package]
-name = "sculk-demo"
+name = "shrieker"
 version = "0.1.0"
 edition = "2024"
-description = "A GUI demo for the sculk P2P tunnel library"
+description = "A GUI client for the sculk P2P tunnel library"
 license = "GPL-3.0"
 
 [package.metadata.bundle]
-name = "sculk demo"
-identifier = "io.github.kercyding.sculk-demo"
-short_description = "A GUI demo for the sculk P2P tunnel library"
+name = "shrieker"
+identifier = "io.github.kercyding.shrieker"
+short_description = "A GUI client for the sculk P2P tunnel library"
 copyright = "Copyright © 2025 KercyDing"
 category = "public.app-category.utilities"
 icon = ["assets/icon.icns", "assets/icon.ico"]
@@ -16,16 +16,16 @@ icon = ["assets/icon.icns", "assets/icon.ico"]
 [package.metadata.deb]
 depends = "$auto"
 assets = [
-    ["target/release/sculk-demo", "usr/bin/", "755"],
-    ["assets/icon.png", "usr/share/pixmaps/sculk-demo.png", "644"],
-    ["./sculk-demo.desktop", "usr/share/applications/", "644"],
+    ["target/release/shrieker", "usr/bin/", "755"],
+    ["assets/icon.png", "usr/share/pixmaps/shrieker.png", "644"],
+    ["./shrieker.desktop", "usr/share/applications/", "644"],
 ]
 
 [package.metadata.generate-rpm]
 assets = [
-    { source = "target/release/sculk-demo", dest = "/usr/bin/sculk-demo", mode = "755" },
-    { source = "assets/icon.png", dest = "/usr/share/pixmaps/sculk-demo.png", mode = "644" },
-    { source = "./sculk-demo.desktop", dest = "/usr/share/applications/sculk-demo.desktop", mode = "644" },
+    { source = "target/release/shrieker", dest = "/usr/bin/shrieker", mode = "755" },
+    { source = "assets/icon.png", dest = "/usr/share/pixmaps/shrieker.png", mode = "644" },
+    { source = "./shrieker.desktop", dest = "/usr/share/applications/shrieker.desktop", mode = "644" },
 ]
 
 [dependencies]

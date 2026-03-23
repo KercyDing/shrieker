@@ -31,7 +31,7 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "sculk demo",
+        "shrieker",
         options,
         Box::new(|cc| {
             let ctx = &cc.egui_ctx;

@@ -9,12 +9,11 @@ pub fn render_header(app: &mut App, ctx: &egui::Context) {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.label(
-                egui::RichText::new("sculk")
+                egui::RichText::new("shrieker")
                     .strong()
                     .size(18.0)
                     .color(GREEN),
             );
-            ui.label(egui::RichText::new("demo").size(18.0).color(DIM));
             ui.add_space(16.0);
 
             let enabled = !app.running;

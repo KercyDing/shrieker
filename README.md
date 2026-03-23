@@ -1,6 +1,6 @@
-# sculk-demo
+# Shrieker
 
-基于 [sculk](https://github.com/KercyDing/sculk) P2P 隧道库的 GUI 演示程序，使用 [egui](https://github.com/emilk/egui) 构建。
+基于 [sculk](https://github.com/KercyDing/sculk) P2P 隧道库的 GUI 客户端，使用 [egui](https://github.com/emilk/egui) 构建。
 
 ## 实机效果
 
@@ -13,6 +13,7 @@
 
 - **建房**：暴露本地 Minecraft 服务端，生成可分享的 `sculk://...` 票据
 - **加入**：通过票据连接到房主隧道，转发流量到本地端口
+- **中继配置**：支持默认中继或自建中继
 - 跨重启的配置与密钥持久化
 
 ## 环境依赖
@@ -49,7 +50,7 @@ sudo dnf install \
 cargo build --release
 ```
 
-Windows 产物为 `target/release/sculk-demo.exe`，可直接双击运行。
+Windows 产物为 `target/release/shrieker.exe`，可直接双击运行。
 
 ## 打包
 
@@ -62,7 +63,7 @@ cargo install cargo-bundle
 cargo bundle --release
 ```
 
-产物路径：`target/release/bundle/osx/sculk demo.app`
+产物路径：`target/release/bundle/osx/shrieker.app`
 
 ### Linux RPM（`.rpm`）
 
@@ -74,7 +75,7 @@ cargo build --release
 cargo generate-rpm
 ```
 
-产物路径：`target/generate-rpm/sculk-demo-*.rpm`
+产物路径：`target/generate-rpm/shrieker-*.rpm`
 
 ### Linux DEB（`.deb`）
 
@@ -85,7 +86,7 @@ cargo install cargo-deb
 cargo deb
 ```
 
-产物路径：`target/debian/sculk-demo_*.deb`
+产物路径：`target/debian/shrieker_*.deb`
 
 ## 使用
 

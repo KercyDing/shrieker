@@ -1,9 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Sculk Demo
-Comment=A GUI demo for the sculk P2P tunnel library
-Exec=sculk-demo
-Icon=sculk-demo
-Terminal=false
-Categories=Network;Utility;

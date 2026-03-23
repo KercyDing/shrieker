@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Shrieker
+Comment=A GUI client for the sculk P2P tunnel library
+Exec=shrieker
+Icon=shrieker
+Terminal=false
+Categories=Network;Utility;
