@@ -13,17 +13,19 @@ env:
 
 jobs:
   build:
+    name: Build and package (${{ matrix.target }})
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-22.04
             suffix: linux-amd64
           - target: x86_64-apple-darwin
-            runner: macos-latest
+            runner: macos-15-intel
             suffix: darwin-amd64
           - target: aarch64-apple-darwin
-            runner: macos-latest
+            runner: macos-15
             suffix: darwin-arm64
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
@@ -48,35 +50,74 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            rpm \
             libxkbcommon-dev \
             libwayland-dev \
             libgl1-mesa-dev \
             libglib2.0-dev
 
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Install packagers (Linux)
+        if: runner.os == 'Linux'
+        run: cargo install --locked cargo-deb cargo-generate-rpm
 
-      - name: Rename artifact (unix)
-        if: runner.os != 'Windows'
-        run: mv target/${{ matrix.target }}/release/$BIN_NAME $BIN_NAME-${{ matrix.suffix }}
+      - name: Install packager (macOS)
+        if: runner.os == 'macOS'
+        run: cargo install --locked cargo-bundle
 
-      - name: Rename artifact (windows)
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+          cargo deb --target ${{ matrix.target }} --no-build
+          cargo generate-rpm --target ${{ matrix.target }}
+
+          deb_path="$(find target -type f -name '*.deb' | head -n 1)"
+          rpm_path="$(find target -type f -name '*.rpm' | head -n 1)"
+
+          cp "$deb_path" "${BIN_NAME}-${{ matrix.suffix }}.deb"
+          cp "$rpm_path" "${BIN_NAME}-${{ matrix.suffix }}.rpm"
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cargo bundle --release --target ${{ matrix.target }}
+
+          app_path="$(find target -type d -name "${BIN_NAME}.app" | head -n 1)"
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "${BIN_NAME}-${{ matrix.suffix }}.app.zip"
+
+      - name: Package (Windows)
         if: runner.os == 'Windows'
-        run: mv target/${{ matrix.target }}/release/$env:BIN_NAME.exe $env:BIN_NAME-${{ matrix.suffix }}.exe
+        shell: pwsh
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+          Compress-Archive `
+            -Path "target/${{ matrix.target }}/release/$env:BIN_NAME.exe" `
+            -DestinationPath "$env:BIN_NAME-${{ matrix.suffix }}.zip"
 
-      - name: Upload artifact (unix)
-        if: runner.os != 'Windows'
+      - name: Upload artifact (Linux)
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}-bin
-          path: ${{ env.BIN_NAME }}-${{ matrix.suffix }}
+          name: ${{ matrix.target }}-packages
+          path: |
+            ${{ env.BIN_NAME }}-${{ matrix.suffix }}.deb
+            ${{ env.BIN_NAME }}-${{ matrix.suffix }}.rpm
 
-      - name: Upload artifact (windows)
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-packages
+          path: ${{ env.BIN_NAME }}-${{ matrix.suffix }}.app.zip
+
+      - name: Upload artifact (Windows)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}-bin
-          path: ${{ env.BIN_NAME }}-${{ matrix.suffix }}.exe
+          name: ${{ matrix.target }}-packages
+          path: ${{ env.BIN_NAME }}-${{ matrix.suffix }}.zip
 
   release:
     needs: build
