@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BIN_NAME: shrieker
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            suffix: linux-amd64
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            suffix: darwin-amd64
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            suffix: darwin-arm64
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            suffix: windows-amd64
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libgl1-mesa-dev \
+            libglib2.0-dev
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Rename artifact (unix)
+        if: runner.os != 'Windows'
+        run: mv target/${{ matrix.target }}/release/$BIN_NAME $BIN_NAME-${{ matrix.suffix }}
+
+      - name: Rename artifact (windows)
+        if: runner.os == 'Windows'
+        run: mv target/${{ matrix.target }}/release/$env:BIN_NAME.exe $env:BIN_NAME-${{ matrix.suffix }}.exe
+
+      - name: Upload artifact (unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-bin
+          path: ${{ env.BIN_NAME }}-${{ matrix.suffix }}
+
+      - name: Upload artifact (windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-bin
+          path: ${{ env.BIN_NAME }}-${{ matrix.suffix }}.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: shrieker-*
+          generate_release_notes: true
