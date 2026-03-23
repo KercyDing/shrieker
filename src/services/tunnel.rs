@@ -17,7 +17,7 @@ pub fn spawn_host(
         match IrohTunnel::host(port, secret_key, relay_url, config).await {
             Ok((tunnel, ticket, events)) => {
                 let ticket_str = ticket.to_string();
-                let _ = tx.send(UiMsg::Log("[+] Host ready".into()));
+                let _ = tx.send(UiMsg::Log(t!("host_ready").to_string()));
                 let _ = tx.send(UiMsg::HostReady {
                     tunnel: Arc::new(tunnel),
                     ticket: ticket_str,
@@ -25,7 +25,7 @@ pub fn spawn_host(
                 });
             }
             Err(e) => {
-                let _ = tx.send(UiMsg::Log(format!("[-] Host failed: {e}")));
+                let _ = tx.send(UiMsg::Log(t!("host_failed", err = e).to_string()));
             }
         }
     });
@@ -43,20 +43,20 @@ pub fn spawn_join(
         let ticket = match ticket_str.parse::<Ticket>() {
             Ok(t) => t,
             Err(e) => {
-                let _ = tx.send(UiMsg::Log(format!("[-] Invalid ticket: {e}")));
+                let _ = tx.send(UiMsg::Log(t!("invalid_ticket", err = e).to_string()));
                 return;
             }
         };
         match IrohTunnel::join(&ticket, port, config).await {
             Ok((tunnel, events)) => {
-                let _ = tx.send(UiMsg::Log("[+] Joined!".into()));
+                let _ = tx.send(UiMsg::Log(t!("joined").to_string()));
                 let _ = tx.send(UiMsg::JoinReady {
                     tunnel: Arc::new(tunnel),
                     events,
                 });
             }
             Err(e) => {
-                let _ = tx.send(UiMsg::Log(format!("[-] Join failed: {e}")));
+                let _ = tx.send(UiMsg::Log(t!("join_failed", err = e).to_string()));
             }
         }
     });
@@ -70,6 +70,6 @@ pub fn spawn_close(
 ) {
     rt.spawn(async move {
         tunnel.close().await;
-        let _ = tx.send(UiMsg::Log("[*] Tunnel closed".into()));
+        let _ = tx.send(UiMsg::Log(t!("tunnel_closed").to_string()));
     });
 }

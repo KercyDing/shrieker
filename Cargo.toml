@@ -33,6 +33,7 @@ sculk = { version = "0.2.0", features = ["persist", "clipboard"] }
 eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 image = { version = "0.25", features = ["png"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+rust-i18n = "3.1.5"
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

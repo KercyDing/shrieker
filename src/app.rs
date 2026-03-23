@@ -51,6 +51,7 @@ pub struct App {
     pub(crate) relay_custom: bool,
     pub(crate) relay_url: String,
     pub(crate) connections: Vec<ConnectionSnapshot>,
+    pub(crate) dark_mode: bool,
 }
 
 impl App {
@@ -61,7 +62,7 @@ impl App {
 
         let mut logs = ps.errors;
         if logs.is_empty() {
-            logs.push("[+] Profile and key loaded".into());
+            logs.push(t!("profile_loaded").to_string());
         }
 
         let host_port = ps.profile.host.port.to_string();
@@ -92,6 +93,7 @@ impl App {
             relay_custom,
             relay_url,
             connections: Vec::new(),
+            dark_mode: true,
         }
     }
 
@@ -109,7 +111,7 @@ impl App {
             Some(self.relay_url.clone())
         };
         if let Err(e) = self.profile.save() {
-            self.logs.push(format!("[-] Save profile: {e}"));
+            self.logs.push(t!("save_profile_err", err = e).to_string());
         }
     }
 
@@ -128,7 +130,7 @@ impl App {
         let relay_url = self.profile.resolve_relay_url(None).ok().unwrap_or(None);
 
         self.running = true;
-        self.logs.push("[*] Starting tunnel...".into());
+        self.logs.push(t!("starting_tunnel").to_string());
         self.save_profile();
 
         services::tunnel::spawn_host(&self.rt, self.ui_tx.clone(), port, secret_key, relay_url, config);
@@ -145,7 +147,7 @@ impl App {
         let config = JoinConfig::default().password(password);
 
         self.running = true;
-        self.logs.push("[*] Joining tunnel...".into());
+        self.logs.push(t!("joining_tunnel").to_string());
         self.save_profile();
 
         services::tunnel::spawn_join(&self.rt, self.ui_tx.clone(), ticket_str, port, config);
@@ -171,7 +173,7 @@ impl App {
                     events,
                 } => {
                     if sculk::clipboard::clipboard_copy(&ticket) {
-                        self.logs.push("[+] Ticket copied to clipboard".into());
+                        self.logs.push(t!("ticket_copied").to_string());
                     }
                     self.tunnel = Some(tunnel);
                     self.ticket_display = Some(ticket);
@@ -194,30 +196,56 @@ impl App {
             self.connections = conns;
         }
     }
+
+    /// 切换语言。
+    pub(crate) fn toggle_lang(&mut self) {
+        let current = rust_i18n::locale();
+        if &*current == "zh-CN" {
+            rust_i18n::set_locale("en");
+        } else {
+            rust_i18n::set_locale("zh-CN");
+        }
+    }
+
+    /// 切换主题。
+    pub(crate) fn toggle_theme(&mut self, ctx: &egui::Context) {
+        self.dark_mode = !self.dark_mode;
+        if self.dark_mode {
+            ctx.set_visuals(egui::Visuals::dark());
+        } else {
+            ctx.set_visuals(egui::Visuals::light());
+        }
+    }
 }
 
 /// 将隧道事件格式化为人类可读的日志行。
 fn format_event(event: &TunnelEvent) -> String {
     match event {
-        TunnelEvent::PlayerJoined { id } => format!("[+] Player joined: {id}"),
-        TunnelEvent::PlayerLeft { id, reason } => format!("[-] Player left: {id} ({reason})"),
-        TunnelEvent::Connected => "[+] Connected to host".into(),
-        TunnelEvent::Disconnected { reason } => format!("[-] Disconnected: {reason}"),
+        TunnelEvent::PlayerJoined { id } => t!("player_joined", id = id).to_string(),
+        TunnelEvent::PlayerLeft { id, reason } => {
+            t!("player_left", id = id, reason = reason).to_string()
+        }
+        TunnelEvent::Connected => t!("connected_host").to_string(),
+        TunnelEvent::Disconnected { reason } => t!("disconnected", reason = reason).to_string(),
         TunnelEvent::PathChanged {
             remote_id,
             is_relay,
             rtt_ms,
         } => {
-            let route = if *is_relay { "relay" } else { "direct" };
-            format!("[*] {remote_id}: {route}, {rtt_ms}ms")
+            let route = if *is_relay {
+                t!("relay_route")
+            } else {
+                t!("direct_route")
+            };
+            t!("path_changed", id = remote_id, route = route, rtt = rtt_ms).to_string()
         }
-        TunnelEvent::Reconnecting { attempt } => {
-            format!("[*] Reconnecting (attempt {attempt})...")
+        TunnelEvent::Reconnecting { attempt } => t!("reconnecting", n = attempt).to_string(),
+        TunnelEvent::Reconnected => t!("reconnected").to_string(),
+        TunnelEvent::AuthFailed { id } => t!("auth_failed", id = id).to_string(),
+        TunnelEvent::PlayerRejected { id, reason } => {
+            t!("rejected", id = id, reason = reason).to_string()
         }
-        TunnelEvent::Reconnected => "[+] Reconnected".into(),
-        TunnelEvent::AuthFailed { id } => format!("[-] Auth failed: {id}"),
-        TunnelEvent::PlayerRejected { id, reason } => format!("[-] Rejected: {id} ({reason})"),
-        TunnelEvent::Error { message } => format!("[-] Error: {message}"),
+        TunnelEvent::Error { message } => t!("error_msg", msg = message).to_string(),
         other => format!("[?] {other:?}"),
     }
 }

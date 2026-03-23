@@ -10,9 +10,9 @@ pub fn render_logs(app: &mut App, ui: &mut egui::Ui) {
     ui.add_space(2.0);
 
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Logs").strong());
+        ui.label(egui::RichText::new(t!("logs").as_ref()).strong());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("Clear").clicked() {
+            if ui.small_button(t!("clear").as_ref()).clicked() {
                 app.logs.clear();
             }
         });

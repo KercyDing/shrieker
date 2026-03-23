@@ -10,7 +10,7 @@ pub fn render_status(app: &mut App, ui: &mut egui::Ui) {
     }
 
     ui.separator();
-    ui.label(egui::RichText::new("Connections").color(BLUE).strong());
+    ui.label(egui::RichText::new(t!("connections").as_ref()).color(BLUE).strong());
     ui.add_space(2.0);
 
     egui::Grid::new("conn_grid")
@@ -18,19 +18,23 @@ pub fn render_status(app: &mut App, ui: &mut egui::Ui) {
         .spacing([16.0, 4.0])
         .striped(true)
         .show(ui, |ui| {
-            ui.label(egui::RichText::new("Peer").color(DIM));
-            ui.label(egui::RichText::new("RTT").color(DIM));
-            ui.label(egui::RichText::new("Route").color(DIM));
-            ui.label(egui::RichText::new("Traffic").color(DIM));
+            ui.label(egui::RichText::new(t!("peer").as_ref()).color(DIM));
+            ui.label(egui::RichText::new(t!("rtt").as_ref()).color(DIM));
+            ui.label(egui::RichText::new(t!("route").as_ref()).color(DIM));
+            ui.label(egui::RichText::new(t!("traffic").as_ref()).color(DIM));
             ui.end_row();
 
             for conn in &app.connections {
                 let peer = format!("{:.8}", conn.remote_id.to_string());
                 ui.label(&peer);
                 ui.label(format!("{}ms", conn.rtt_ms));
-                let route = if conn.is_relay { "relay" } else { "direct" };
+                let route = if conn.is_relay {
+                    t!("relay_route")
+                } else {
+                    t!("direct_route")
+                };
                 let color = if conn.is_relay { DIM } else { GREEN };
-                ui.label(egui::RichText::new(route).color(color));
+                ui.label(egui::RichText::new(route.as_ref()).color(color));
                 ui.label(format_bytes(conn.tx_bytes + conn.rx_bytes));
                 ui.end_row();
             }

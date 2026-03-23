@@ -1,8 +1,13 @@
 #![windows_subsystem = "windows"]
 
+#[macro_use]
+extern crate rust_i18n;
+
 mod app;
 mod services;
 mod ui;
+
+i18n!("locales", fallback = "en");
 
 use eframe::egui;
 
@@ -16,6 +21,44 @@ fn load_icon() -> egui::IconData {
         rgba: img.into_raw(),
         width: w,
         height: h,
+    }
+}
+
+fn setup_cjk_fonts(ctx: &egui::Context) {
+    let candidates: &[&str] = &[
+        // macOS
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+        // Windows
+        "C:\\Windows\\Fonts\\msyh.ttc",
+        "C:\\Windows\\Fonts\\simsun.ttc",
+        // Linux
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc",
+    ];
+
+    for path in candidates {
+        if let Ok(data) = std::fs::read(path) {
+            let mut fonts = egui::FontDefinitions::default();
+            fonts.font_data.insert(
+                "cjk".to_owned(),
+                std::sync::Arc::new(egui::FontData::from_owned(data)),
+            );
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .push("cjk".to_owned());
+            fonts
+                .families
+                .entry(egui::FontFamily::Monospace)
+                .or_default()
+                .push("cjk".to_owned());
+            ctx.set_fonts(fonts);
+            return;
+        }
     }
 }
 
@@ -35,6 +78,7 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             let ctx = &cc.egui_ctx;
+            setup_cjk_fonts(ctx);
             let mut style = (*ctx.style()).clone();
             style.spacing.item_spacing = egui::vec2(8.0, 6.0);
             style.spacing.button_padding = egui::vec2(12.0, 4.0);

@@ -1,0 +1,151 @@
+_version: 2
+host:
+  en: Host
+  zh-CN: 建房
+join:
+  en: Join
+  zh-CN: 加入
+relay:
+  en: Relay
+  zh-CN: 中继
+connected:
+  en: Connected
+  zh-CN: 已连接
+idle:
+  en: Idle
+  zh-CN: 空闲
+mc_port:
+  en: MC Port
+  zh-CN: MC 端口
+password:
+  en: Password
+  zh-CN: 密码
+max_players:
+  en: Max Players
+  zh-CN: 最大玩家
+stop:
+  en: Stop
+  zh-CN: 停止
+start_host:
+  en: Start Host
+  zh-CN: 开始建房
+ticket:
+  en: Ticket
+  zh-CN: 票据
+copy_clipboard:
+  en: Copy to Clipboard
+  zh-CN: 复制到剪贴板
+local_port:
+  en: Local Port
+  zh-CN: 本地端口
+disconnect:
+  en: Disconnect
+  zh-CN: 断开
+join_btn:
+  en: Join
+  zh-CN: 加入
+relay_settings:
+  en: Relay Settings
+  zh-CN: 中继设置
+default_relay:
+  en: Default relay
+  zh-CN: 默认中继
+custom_relay:
+  en: Custom relay
+  zh-CN: 自建中继
+save:
+  en: Save
+  zh-CN: 保存
+connections:
+  en: Connections
+  zh-CN: 连接
+peer:
+  en: Peer
+  zh-CN: 节点
+rtt:
+  en: RTT
+  zh-CN: 延迟
+route:
+  en: Route
+  zh-CN: 路由
+traffic:
+  en: Traffic
+  zh-CN: 流量
+relay_route:
+  en: relay
+  zh-CN: 中继
+direct_route:
+  en: direct
+  zh-CN: 直连
+logs:
+  en: Logs
+  zh-CN: 日志
+clear:
+  en: Clear
+  zh-CN: 清空
+profile_loaded:
+  en: "[+] Profile and key loaded"
+  zh-CN: "[+] 配置和密钥已加载"
+save_profile_err:
+  en: "[-] Save profile: %{err}"
+  zh-CN: "[-] 保存配置失败: %{err}"
+starting_tunnel:
+  en: "[*] Starting tunnel..."
+  zh-CN: "[*] 正在启动隧道..."
+joining_tunnel:
+  en: "[*] Joining tunnel..."
+  zh-CN: "[*] 正在加入隧道..."
+ticket_copied:
+  en: "[+] Ticket copied to clipboard"
+  zh-CN: "[+] 票据已复制到剪贴板"
+host_ready:
+  en: "[+] Host ready"
+  zh-CN: "[+] 建房就绪"
+host_failed:
+  en: "[-] Host failed: %{err}"
+  zh-CN: "[-] 建房失败: %{err}"
+invalid_ticket:
+  en: "[-] Invalid ticket: %{err}"
+  zh-CN: "[-] 无效票据: %{err}"
+joined:
+  en: "[+] Joined!"
+  zh-CN: "[+] 已加入!"
+join_failed:
+  en: "[-] Join failed: %{err}"
+  zh-CN: "[-] 加入失败: %{err}"
+tunnel_closed:
+  en: "[*] Tunnel closed"
+  zh-CN: "[*] 隧道已关闭"
+relay_saved:
+  en: "[+] Relay settings saved"
+  zh-CN: "[+] 中继设置已保存"
+player_joined:
+  en: "[+] Player joined: %{id}"
+  zh-CN: "[+] 玩家加入: %{id}"
+player_left:
+  en: "[-] Player left: %{id} (%{reason})"
+  zh-CN: "[-] 玩家离开: %{id} (%{reason})"
+connected_host:
+  en: "[+] Connected to host"
+  zh-CN: "[+] 已连接到主机"
+disconnected:
+  en: "[-] Disconnected: %{reason}"
+  zh-CN: "[-] 已断开: %{reason}"
+path_changed:
+  en: "[*] %{id}: %{route}, %{rtt}ms"
+  zh-CN: "[*] %{id}: %{route}, %{rtt}ms"
+reconnecting:
+  en: "[*] Reconnecting (attempt %{n})..."
+  zh-CN: "[*] 正在重连 (第 %{n} 次)..."
+reconnected:
+  en: "[+] Reconnected"
+  zh-CN: "[+] 已重连"
+auth_failed:
+  en: "[-] Auth failed: %{id}"
+  zh-CN: "[-] 认证失败: %{id}"
+rejected:
+  en: "[-] Rejected: %{id} (%{reason})"
+  zh-CN: "[-] 已拒绝: %{id} (%{reason})"
+error_msg:
+  en: "[-] Error: %{msg}"
+  zh-CN: "[-] 错误: %{msg}"
