@@ -4348,6 +4348,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9381fb67ae32f20b7f1465a8ea7e59016a9f8d504cc0febeb268977d9ba41d82"
 dependencies = [
+ "arboard",
  "dirs",
  "iroh",
  "rand 0.10.0",
