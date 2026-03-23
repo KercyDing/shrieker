@@ -135,7 +135,14 @@ impl App {
         self.logs.push(t!("starting_tunnel").to_string());
         self.save_profile();
 
-        services::tunnel::spawn_host(&self.rt, self.ui_tx.clone(), port, secret_key, relay_url, config);
+        services::tunnel::spawn_host(
+            &self.rt,
+            self.ui_tx.clone(),
+            port,
+            secret_key,
+            relay_url,
+            config,
+        );
     }
 
     pub(crate) fn start_join(&mut self) {

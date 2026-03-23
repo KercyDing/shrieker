@@ -10,7 +10,11 @@ pub fn render_status(app: &mut App, ui: &mut egui::Ui) {
     }
 
     ui.separator();
-    ui.label(egui::RichText::new(t!("connections").as_ref()).color(BLUE).strong());
+    ui.label(
+        egui::RichText::new(t!("connections").as_ref())
+            .color(BLUE)
+            .strong(),
+    );
     ui.add_space(2.0);
 
     egui::Grid::new("conn_grid")
