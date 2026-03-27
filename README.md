@@ -19,9 +19,24 @@
 
 ## 安装
 
-由 CI 自动构建和发布，直接下载可执行文件即可：
+由 CI 自动构建和发布，根据自己的平台选择对应并下载即可：
 
 - 前往 [Releases](https://github.com/KercyDing/shrieker/releases) 下载对应系统的最新版本
+
+### macOS
+
+当前 Release 中的 `shrieker.app` 未进行 Apple 签名/公证，macOS 可能提示“‘shrieker.app’已损坏，无法打开”。
+
+> 作为一个学生买不起 Apple 开发者账号呜呜🥹
+
+先解压下载的 zip，再在当前文件夹下打开终端，并执行：
+
+```sh
+mv ./shrieker.app /Applications/
+xattr -dr com.apple.quarantine /Applications/shrieker.app
+```
+
+若仍被拦截，可在“系统设置 -> 隐私与安全性”中点击“仍要打开”，或右键应用后选择“打开”。
 
 ### Arch Linux
 
@@ -33,10 +48,10 @@ paru -S shrieker-bin
 
 ## 使用
 
-1. **建房**：填写 MC 端口、可选密码和最大人数 → 点击 **Start Host** → 自动复制票据 → 分享
-2. **加入**：粘贴票据，填写本地端口和密码 → 点击 **Join**
+1. **建房**：填写 MC 端口、可选密码和可选最大人数 → 点击 **开始建房** → 自动复制票据 → 分享
+2. **加入**：粘贴票据，填写本地端口和密码 → 点击 **加入**
 
-日志显示在底部面板，票据也可通过 **Copy to Clipboard** 按钮复制。
+日志显示在底部面板，票据也可通过 **复制到剪贴板** 按钮复制。
 
 ## 许可证
 
