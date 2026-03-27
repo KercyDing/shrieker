@@ -1,0 +1,175 @@
+name: Publish AUR (shrieker-bin)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish-aur:
+    runs-on: ubuntu-latest
+    env:
+      AUR_PKGBASE: shrieker-bin
+      DEB_ASSET: shrieker-linux-amd64.deb
+      BOT_NAME: github-actions[bot]
+      BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+    steps:
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+
+          if [[ -z "${TAG}" ]]; then
+            echo "Tag is required"
+            exit 1
+          fi
+
+          if [[ "${TAG}" != v* ]]; then
+            echo "Tag must start with 'v' (got: ${TAG})"
+            exit 1
+          fi
+
+          PKGVER="${TAG#v}"
+          REPO="${{ github.repository }}"
+          RELEASE_BASE="https://github.com/${REPO}/releases/download/${TAG}"
+          RAW_BASE="https://raw.githubusercontent.com/${REPO}/${TAG}"
+
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "pkgver=${PKGVER}" >> "${GITHUB_OUTPUT}"
+          echo "repo=${REPO}" >> "${GITHUB_OUTPUT}"
+          echo "deb_url=${RELEASE_BASE}/${DEB_ASSET}" >> "${GITHUB_OUTPUT}"
+          echo "desktop_url=${RAW_BASE}/shrieker.desktop" >> "${GITHUB_OUTPUT}"
+          echo "icon_url=${RAW_BASE}/assets/icon.png" >> "${GITHUB_OUTPUT}"
+
+      - name: Download release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          curl -fL --retry 5 --retry-all-errors \
+            -o "dist/${DEB_ASSET}" \
+            "${{ steps.meta.outputs.deb_url }}"
+
+          curl -fL --retry 5 --retry-all-errors \
+            -o "dist/shrieker.desktop" \
+            "${{ steps.meta.outputs.desktop_url }}"
+
+          curl -fL --retry 5 --retry-all-errors \
+            -o "dist/icon.png" \
+            "${{ steps.meta.outputs.icon_url }}"
+
+      - name: Compute checksums
+        id: sums
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "deb_sha=$(sha256sum dist/${DEB_ASSET} | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          echo "desktop_sha=$(sha256sum dist/shrieker.desktop | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          echo "icon_sha=$(sha256sum dist/icon.png | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup AUR SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: Update PKGBUILD and .SRCINFO
+        shell: bash
+        run: |
+          set -euo pipefail
+          export GIT_SSH_COMMAND='ssh -i ~/.ssh/aur -o IdentitiesOnly=yes'
+
+          git clone "ssh://aur@aur.archlinux.org/${AUR_PKGBASE}.git" aur
+          cd aur
+
+          cat > PKGBUILD <<PKG
+          pkgname=${AUR_PKGBASE}
+          pkgver=${{ steps.meta.outputs.pkgver }}
+          pkgrel=1
+          pkgdesc='GUI client for the sculk P2P tunnel library (prebuilt binary)'
+          arch=('x86_64')
+          url='https://github.com/${{ steps.meta.outputs.repo }}'
+          license=('GPL3')
+          depends=('glibc' 'gcc-libs' 'libxkbcommon' 'wayland' 'libx11' 'libglvnd' 'glib2')
+          provides=('shrieker')
+          conflicts=('shrieker')
+          source=(
+            '${DEB_ASSET}::${{ steps.meta.outputs.deb_url }}'
+            'shrieker.desktop::${{ steps.meta.outputs.desktop_url }}'
+            'icon.png::${{ steps.meta.outputs.icon_url }}'
+          )
+          sha256sums=(
+            '${{ steps.sums.outputs.deb_sha }}'
+            '${{ steps.sums.outputs.desktop_sha }}'
+            '${{ steps.sums.outputs.icon_sha }}'
+          )
+          
+          package() {
+            cd "${srcdir}"
+            bsdtar -xf "${DEB_ASSET}"
+            local data_tar
+            data_tar="$(find . -maxdepth 1 -type f -name 'data.tar.*' | head -n1)"
+            if [[ -z "${data_tar}" ]]; then
+              echo "failed to locate data.tar.* in ${DEB_ASSET}" >&2
+              exit 1
+            fi
+            bsdtar -xf "${data_tar}" "./usr/bin/shrieker"
+            install -Dm755 "${srcdir}/usr/bin/shrieker" "${pkgdir}/usr/bin/shrieker"
+            install -Dm644 "${srcdir}/shrieker.desktop" "${pkgdir}/usr/share/applications/shrieker.desktop"
+            install -Dm644 "${srcdir}/icon.png" "${pkgdir}/usr/share/pixmaps/shrieker.png"
+          }
+          PKG
+
+          cat > .SRCINFO <<SRC
+          pkgbase = ${AUR_PKGBASE}
+          	pkgdesc = GUI client for the sculk P2P tunnel library (prebuilt binary)
+          	pkgver = ${{ steps.meta.outputs.pkgver }}
+          	pkgrel = 1
+          	url = https://github.com/${{ steps.meta.outputs.repo }}
+          	arch = x86_64
+          	license = GPL3
+          	depends = glibc
+          	depends = gcc-libs
+          	depends = libxkbcommon
+          	depends = wayland
+          	depends = libx11
+          	depends = libglvnd
+          	depends = glib2
+          	provides = shrieker
+          	conflicts = shrieker
+          	source = ${DEB_ASSET}::${{ steps.meta.outputs.deb_url }}
+          	source = shrieker.desktop::${{ steps.meta.outputs.desktop_url }}
+          	source = icon.png::${{ steps.meta.outputs.icon_url }}
+          	sha256sums = ${{ steps.sums.outputs.deb_sha }}
+          	sha256sums = ${{ steps.sums.outputs.desktop_sha }}
+          	sha256sums = ${{ steps.sums.outputs.icon_sha }}
+          
+          pkgname = ${AUR_PKGBASE}
+          SRC
+
+          git add PKGBUILD .SRCINFO
+
+          if git diff --cached --quiet; then
+            echo "No AUR changes detected"
+            exit 0
+          fi
+
+          git config user.name "${BOT_NAME}"
+          git config user.email "${BOT_EMAIL}"
+          git commit -m "Update to ${{ steps.meta.outputs.pkgver }}"
+          git push
