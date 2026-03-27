@@ -1,4 +1,4 @@
-name: Publish AUR (shrieker-bin)
+name: Publish AUR
 
 on:
   release:
@@ -118,20 +118,20 @@ jobs:
             '${{ steps.sums.outputs.desktop_sha }}'
             '${{ steps.sums.outputs.icon_sha }}'
           )
-          
+
           package() {
-            cd "${srcdir}"
+            cd "\${srcdir}"
             bsdtar -xf "${DEB_ASSET}"
             local data_tar
-            data_tar="$(find . -maxdepth 1 -type f -name 'data.tar.*' | head -n1)"
-            if [[ -z "${data_tar}" ]]; then
+            data_tar="\$(find . -maxdepth 1 -type f -name 'data.tar.*' | head -n1)"
+            if [[ -z "\${data_tar}" ]]; then
               echo "failed to locate data.tar.* in ${DEB_ASSET}" >&2
               exit 1
             fi
-            bsdtar -xf "${data_tar}" "./usr/bin/shrieker"
-            install -Dm755 "${srcdir}/usr/bin/shrieker" "${pkgdir}/usr/bin/shrieker"
-            install -Dm644 "${srcdir}/shrieker.desktop" "${pkgdir}/usr/share/applications/shrieker.desktop"
-            install -Dm644 "${srcdir}/icon.png" "${pkgdir}/usr/share/pixmaps/shrieker.png"
+            bsdtar -xf "\${data_tar}" "./usr/bin/shrieker"
+            install -Dm755 "\${srcdir}/usr/bin/shrieker" "\${pkgdir}/usr/bin/shrieker"
+            install -Dm644 "\${srcdir}/shrieker.desktop" "\${pkgdir}/usr/share/applications/shrieker.desktop"
+            install -Dm644 "\${srcdir}/icon.png" "\${pkgdir}/usr/share/pixmaps/shrieker.png"
           }
           PKG
 
@@ -158,7 +158,7 @@ jobs:
           	sha256sums = ${{ steps.sums.outputs.deb_sha }}
           	sha256sums = ${{ steps.sums.outputs.desktop_sha }}
           	sha256sums = ${{ steps.sums.outputs.icon_sha }}
-          
+
           pkgname = ${AUR_PKGBASE}
           SRC
 
