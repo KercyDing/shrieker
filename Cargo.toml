@@ -29,7 +29,7 @@ assets = [
 ]
 
 [dependencies]
-sculk = { version = "0.2.0", features = ["persist", "clipboard"] }
+sculk = { version = "0.3.0-rc.1", features = ["persist", "clipboard"] }
 eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 image = { version = "0.25", features = ["png"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }

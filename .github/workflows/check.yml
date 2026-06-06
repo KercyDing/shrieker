@@ -16,7 +16,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.89.0"
+          toolchain: "1.91.0"
           components: clippy, rustfmt
 
       - name: Install system dependencies
