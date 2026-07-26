@@ -89,6 +89,9 @@ profile_loaded:
 save_profile_err:
   en: "[-] Save profile: %{err}"
   zh-CN: "[-] 保存配置失败: %{err}"
+save_preferences_err:
+  en: "[-] Save preferences: %{err}"
+  zh-CN: "[-] 保存偏好失败: %{err}"
 starting_tunnel:
   en: "[*] Starting tunnel..."
   zh-CN: "[*] 正在启动隧道..."
@@ -116,6 +119,9 @@ join_failed:
 tunnel_closed:
   en: "[*] Tunnel closed"
   zh-CN: "[*] 隧道已关闭"
+stop_failed:
+  en: "[-] Stop failed: %{err}"
+  zh-CN: "[-] 关闭失败: %{err}"
 relay_saved:
   en: "[+] Relay settings saved"
   zh-CN: "[+] 中继设置已保存"

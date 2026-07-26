@@ -4,7 +4,7 @@
 extern crate rust_i18n;
 
 mod app;
-mod services;
+mod settings;
 mod ui;
 
 i18n!("locales", fallback = "en");
@@ -64,7 +64,6 @@ fn setup_cjk_fonts(ctx: &egui::Context) {
 
 fn main() -> eframe::Result<()> {
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-    let _guard = rt.enter();
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -87,7 +86,7 @@ fn main() -> eframe::Result<()> {
                 style.visuals.widgets.hovered.corner_radius = radius;
                 style.visuals.widgets.active.corner_radius = radius;
             });
-            let app = app::App::new(rt);
+            let app = app::App::new(rt, ctx.clone());
             let theme = if app.dark_mode {
                 egui::Theme::Dark
             } else {

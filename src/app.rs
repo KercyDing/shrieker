@@ -1,13 +1,14 @@
-use crate::services;
+use crate::settings;
 use crate::ui;
 use eframe::egui;
 use sculk::persist::Profile;
 use sculk::tunnel::{
-    ConnectionSnapshot, HostConfig, IrohTunnel, JoinConfig, SecretKey, TunnelEvent,
+    HostConfig, HostOptions, JoinConfig, JoinOptions, SecretKey, Ticket, TunnelEvent, TunnelMode,
+    TunnelPhase, TunnelService, TunnelStatus, TunnelUpdate,
 };
-use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::sync::mpsc;
+
+const UPDATES_PER_FRAME_MAX: usize = 256;
 
 #[derive(PartialEq, Clone, Copy)]
 pub(crate) enum Mode {
@@ -16,21 +17,14 @@ pub(crate) enum Mode {
     Relay,
 }
 
-pub enum UiMsg {
-    Log(String),
-    HostReady {
-        tunnel: Arc<IrohTunnel>,
-        ticket: String,
-        events: mpsc::Receiver<TunnelEvent>,
-    },
-    JoinReady {
-        tunnel: Arc<IrohTunnel>,
-        events: mpsc::Receiver<TunnelEvent>,
-    },
-}
-
 pub struct App {
-    pub(crate) rt: tokio::runtime::Runtime,
+    rt: tokio::runtime::Runtime,
+    service: TunnelService,
+    repaint: egui::Context,
+    tunnel_rx: mpsc::UnboundedReceiver<TunnelUpdate>,
+    stop_tx: mpsc::UnboundedSender<Result<(), String>>,
+    stop_rx: mpsc::UnboundedReceiver<Result<(), String>>,
+    stop_pending: bool,
     pub(crate) mode: Mode,
     pub(crate) host_port: String,
     pub(crate) password: String,
@@ -38,172 +32,208 @@ pub struct App {
     pub(crate) ticket_input: String,
     pub(crate) join_port: String,
     pub(crate) join_password: String,
-    pub(crate) tunnel: Option<Arc<IrohTunnel>>,
-    pub(crate) ticket_display: Option<String>,
     pub(crate) logs: Vec<String>,
-    pub(crate) event_rx: Option<mpsc::Receiver<TunnelEvent>>,
-    pub(crate) ui_rx: mpsc::UnboundedReceiver<UiMsg>,
-    pub(crate) ui_tx: mpsc::UnboundedSender<UiMsg>,
-    pub(crate) running: bool,
     pub(crate) profile: Profile,
-    pub(crate) _key_path: PathBuf,
     pub(crate) secret_key: Option<SecretKey>,
     pub(crate) relay_custom: bool,
     pub(crate) relay_url: String,
-    pub(crate) connections: Vec<ConnectionSnapshot>,
+    pub(crate) tunnel: TunnelStatus,
     pub(crate) dark_mode: bool,
 }
 
 impl App {
-    pub fn new(rt: tokio::runtime::Runtime) -> Self {
-        let (ui_tx, ui_rx) = mpsc::unbounded_channel();
+    pub fn new(rt: tokio::runtime::Runtime, repaint: egui::Context) -> Self {
+        let loaded = settings::load();
+        rust_i18n::set_locale(&loaded.locale);
 
-        let ps = services::persist::load();
-        let prefs = services::persist::load_prefs();
-        rust_i18n::set_locale(&prefs.locale);
+        let service = TunnelService::new();
+        let tunnel = service.status();
+        let tunnel_rx = spawn_subscription(&rt, service.subscribe(), repaint.clone());
+        let (stop_tx, stop_rx) = mpsc::unbounded_channel();
 
-        let mut logs = ps.errors;
+        let mut logs = loaded.errors;
         if logs.is_empty() {
             logs.push(t!("profile_loaded").to_string());
         }
 
-        let host_port = ps.profile.host.port.to_string();
-        let join_port = ps.profile.join.port.to_string();
-        let ticket_input = ps.profile.join.last_ticket.clone().unwrap_or_default();
-        let relay_custom = ps.profile.relay.custom;
-        let relay_url = ps.profile.relay.url.clone().unwrap_or_default();
-
         Self {
             rt,
+            service,
+            repaint,
+            tunnel_rx,
+            stop_tx,
+            stop_rx,
+            stop_pending: false,
             mode: Mode::Host,
-            host_port,
+            host_port: loaded.profile.host.port.to_string(),
             password: String::new(),
             max_players: String::new(),
-            ticket_input,
-            join_port,
+            ticket_input: loaded.profile.join.last_ticket.clone().unwrap_or_default(),
+            join_port: loaded.profile.join.port.to_string(),
             join_password: String::new(),
-            tunnel: None,
-            ticket_display: None,
+            relay_custom: loaded.profile.relay.custom,
+            relay_url: loaded.profile.relay.url.clone().unwrap_or_default(),
+            profile: loaded.profile,
+            secret_key: loaded.secret_key,
             logs,
-            event_rx: None,
-            ui_rx,
-            ui_tx,
-            running: false,
-            profile: ps.profile,
-            _key_path: ps.key_path,
-            secret_key: ps.secret_key,
-            relay_custom,
-            relay_url,
-            connections: Vec::new(),
-            dark_mode: prefs.dark_mode,
+            tunnel,
+            dark_mode: loaded.dark_mode,
         }
     }
 
-    /// 将 UI 字段同步回 profile 并保存。
+    pub(crate) fn is_idle(&self) -> bool {
+        self.tunnel.state.phase == TunnelPhase::Idle
+    }
+
+    pub(crate) fn stop_pending(&self) -> bool {
+        self.stop_pending
+    }
+
+    /// 将界面字段同步到 profile 并保存。
     pub(crate) fn save_profile(&mut self) {
-        self.profile.host.port = self.host_port.parse().unwrap_or(25565);
-        self.profile.join.port = self.join_port.parse().unwrap_or(30000);
+        if let Ok(port) = self.host_port.parse() {
+            self.profile.host.port = port;
+        }
+        if let Ok(port) = self.join_port.parse() {
+            self.profile.join.port = port;
+        }
         if !self.ticket_input.is_empty() {
             self.profile.join.last_ticket = Some(self.ticket_input.clone());
         }
         self.profile.relay.custom = self.relay_custom;
-        self.profile.relay.url = if self.relay_url.is_empty() {
-            None
-        } else {
-            Some(self.relay_url.clone())
-        };
-        if let Err(e) = self.profile.save() {
-            self.logs.push(t!("save_profile_err", err = e).to_string());
+        self.profile.relay.url = (!self.relay_url.is_empty()).then(|| self.relay_url.clone());
+        if let Err(error) = self.profile.save() {
+            self.logs
+                .push(t!("save_profile_err", err = error).to_string());
         }
     }
 
     pub(crate) fn start_host(&mut self) {
-        let port: u16 = self.host_port.parse().unwrap_or(25565);
-        let password = if self.password.is_empty() {
-            None
-        } else {
-            Some(self.password.clone())
+        let port = match self.host_port.parse::<u16>() {
+            Ok(port) => port,
+            Err(error) => {
+                self.logs.push(t!("host_failed", err = error).to_string());
+                return;
+            }
         };
-        let max_players: Option<u32> = self.max_players.parse().ok();
+        let max_players = match parse_optional_u32(&self.max_players) {
+            Ok(value) => value,
+            Err(error) => {
+                self.logs.push(t!("host_failed", err = error).to_string());
+                return;
+            }
+        };
+        let relay_url = match self.profile.resolve_relay_url(None) {
+            Ok(relay_url) => relay_url,
+            Err(error) => {
+                self.logs.push(t!("host_failed", err = error).to_string());
+                return;
+            }
+        };
         let config = HostConfig::default()
-            .password(password)
+            .password(non_empty(&self.password))
             .max_players(max_players);
-        let secret_key = self.secret_key.clone();
-        let relay_url = self.profile.resolve_relay_url(None).ok().unwrap_or(None);
+        let options = HostOptions::new(port)
+            .secret_key(self.secret_key.clone())
+            .relay_url(relay_url)
+            .config(config);
 
-        self.running = true;
-        self.logs.push(t!("starting_tunnel").to_string());
         self.save_profile();
-
-        services::tunnel::spawn_host(
-            &self.rt,
-            self.ui_tx.clone(),
-            port,
-            secret_key,
-            relay_url,
-            config,
-        );
+        self.logs.push(t!("starting_tunnel").to_string());
+        if let Err(error) = self.rt.block_on(self.service.start_host(options)) {
+            self.logs.push(t!("host_failed", err = error).to_string());
+        }
+        self.tunnel = self.service.status();
     }
 
     pub(crate) fn start_join(&mut self) {
-        let ticket_str = self.ticket_input.clone();
-        let port: u16 = self.join_port.parse().unwrap_or(30000);
-        let password = if self.join_password.is_empty() {
-            None
-        } else {
-            Some(self.join_password.clone())
+        let ticket = match self.ticket_input.trim().parse::<Ticket>() {
+            Ok(ticket) => ticket,
+            Err(error) => {
+                self.logs
+                    .push(t!("invalid_ticket", err = error).to_string());
+                return;
+            }
         };
-        let config = JoinConfig::default().password(password);
+        let port = match self.join_port.parse::<u16>() {
+            Ok(port) => port,
+            Err(error) => {
+                self.logs.push(t!("join_failed", err = error).to_string());
+                return;
+            }
+        };
+        let config = JoinConfig::default().password(non_empty(&self.join_password));
+        let options = JoinOptions::new(ticket, port).config(config);
 
-        self.running = true;
-        self.logs.push(t!("joining_tunnel").to_string());
         self.save_profile();
-
-        services::tunnel::spawn_join(&self.rt, self.ui_tx.clone(), ticket_str, port, config);
+        self.logs.push(t!("joining_tunnel").to_string());
+        if let Err(error) = self.rt.block_on(self.service.start_join(options)) {
+            self.logs.push(t!("join_failed", err = error).to_string());
+        }
+        self.tunnel = self.service.status();
     }
 
     pub(crate) fn stop(&mut self) {
-        if let Some(tunnel) = self.tunnel.take() {
-            services::tunnel::spawn_close(&self.rt, self.ui_tx.clone(), tunnel);
+        if self.stop_pending {
+            return;
         }
-        self.running = false;
-        self.ticket_display = None;
-        self.event_rx = None;
-        self.connections.clear();
+        self.stop_pending = true;
+
+        let service = self.service.clone();
+        let tx = self.stop_tx.clone();
+        let repaint = self.repaint.clone();
+        self.rt.spawn(async move {
+            let result = service.shutdown().await.map_err(|error| error.to_string());
+            let _ = tx.send(result);
+            repaint.request_repaint();
+        });
     }
 
     fn poll(&mut self) {
-        while let Ok(msg) = self.ui_rx.try_recv() {
-            match msg {
-                UiMsg::Log(s) => self.logs.push(s),
-                UiMsg::HostReady {
-                    tunnel,
-                    ticket,
-                    events,
-                } => {
-                    if sculk::clipboard::clipboard_copy(&ticket) {
+        for _ in 0..UPDATES_PER_FRAME_MAX {
+            let Ok(update) = self.tunnel_rx.try_recv() else {
+                break;
+            };
+            self.apply_tunnel_update(update);
+        }
+        if let Ok(result) = self.stop_rx.try_recv() {
+            self.stop_pending = false;
+            if let Err(error) = result {
+                self.logs.push(t!("stop_failed", err = error).to_string());
+            }
+        }
+    }
+
+    fn apply_tunnel_update(&mut self, update: TunnelUpdate) {
+        match update {
+            TunnelUpdate::Status(status) => self.apply_status(status),
+            TunnelUpdate::Event(event) => self.logs.push(format_event(&event)),
+            _ => {}
+        }
+    }
+
+    fn apply_status(&mut self, status: TunnelStatus) {
+        let previous = self.tunnel.state.clone();
+        let current = &status.state;
+
+        if previous.phase != TunnelPhase::Active && current.phase == TunnelPhase::Active {
+            match current.mode {
+                Some(TunnelMode::Host) => {
+                    self.logs.push(t!("host_ready").to_string());
+                    if let Some(ticket) = &current.ticket
+                        && sculk::clipboard::clipboard_copy(&ticket.to_string())
+                    {
                         self.logs.push(t!("ticket_copied").to_string());
                     }
-                    self.tunnel = Some(tunnel);
-                    self.ticket_display = Some(ticket);
-                    self.event_rx = Some(events);
                 }
-                UiMsg::JoinReady { tunnel, events } => {
-                    self.tunnel = Some(tunnel);
-                    self.event_rx = Some(events);
-                }
+                Some(TunnelMode::Join) => self.logs.push(t!("joined").to_string()),
+                None => {}
             }
+        } else if previous.phase == TunnelPhase::Stopping && current.phase == TunnelPhase::Idle {
+            self.logs.push(t!("tunnel_closed").to_string());
         }
-        if let Some(rx) = &mut self.event_rx {
-            while let Ok(event) = rx.try_recv() {
-                self.logs.push(format_event(&event));
-            }
-        }
-        if let Some(tunnel) = &self.tunnel
-            && let Ok(conns) = tunnel.connections()
-        {
-            self.connections = conns;
-        }
+
+        self.tunnel = status;
     }
 
     /// 切换语言。
@@ -214,7 +244,7 @@ impl App {
         } else {
             rust_i18n::set_locale("zh-CN");
         }
-        services::persist::save_prefs(self.dark_mode, &rust_i18n::locale());
+        self.save_preferences();
     }
 
     /// 切换主题。
@@ -226,7 +256,44 @@ impl App {
             egui::Theme::Light
         };
         ctx.set_theme(theme);
-        services::persist::save_prefs(self.dark_mode, &rust_i18n::locale());
+        self.save_preferences();
+    }
+
+    fn save_preferences(&mut self) {
+        if let Err(error) = settings::save_preferences(self.dark_mode, rust_i18n::locale().as_ref())
+        {
+            self.logs
+                .push(t!("save_preferences_err", err = error).to_string());
+        }
+    }
+}
+
+fn spawn_subscription(
+    rt: &tokio::runtime::Runtime,
+    mut subscription: sculk::tunnel::TunnelSubscription,
+    repaint: egui::Context,
+) -> mpsc::UnboundedReceiver<TunnelUpdate> {
+    let (tx, rx) = mpsc::unbounded_channel();
+    rt.spawn(async move {
+        while let Some(update) = subscription.recv().await {
+            if tx.send(update).is_err() {
+                break;
+            }
+            repaint.request_repaint();
+        }
+    });
+    rx
+}
+
+fn non_empty(value: &str) -> Option<String> {
+    (!value.is_empty()).then(|| value.to_owned())
+}
+
+fn parse_optional_u32(value: &str) -> Result<Option<u32>, std::num::ParseIntError> {
+    if value.is_empty() {
+        Ok(None)
+    } else {
+        value.parse().map(Some)
     }
 }
 
@@ -266,25 +333,32 @@ impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll();
 
-        if self.running {
+        if self.stop_pending || !self.is_idle() {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
     }
 
     fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let ctx = root.ctx().clone();
+        ui::render(self, root);
+    }
+}
 
-        ui::render_header(self, root, &ctx);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        egui::CentralPanel::default().show(root, |ui| {
-            match self.mode {
-                Mode::Host => ui::render_host(self, ui, &ctx),
-                Mode::Join => ui::render_join(self, ui),
-                Mode::Relay => ui::render_relay(self, ui),
-            }
+    #[test]
+    fn parses_empty_optional_number() {
+        assert_eq!(parse_optional_u32(""), Ok(None));
+    }
 
-            ui::render_status(self, ui);
-            ui::render_logs(self, ui);
-        });
+    #[test]
+    fn parses_present_optional_number() {
+        assert_eq!(parse_optional_u32("8"), Ok(Some(8)));
+    }
+
+    #[test]
+    fn rejects_invalid_optional_number() {
+        assert!(parse_optional_u32("eight").is_err());
     }
 }
