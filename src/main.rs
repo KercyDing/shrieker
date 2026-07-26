@@ -24,42 +24,103 @@ fn load_icon() -> egui::IconData {
     }
 }
 
-fn setup_cjk_fonts(ctx: &egui::Context) {
-    let candidates: &[&str] = &[
-        // macOS
-        "/System/Library/Fonts/PingFang.ttc",
-        "/System/Library/Fonts/STHeiti Medium.ttc",
-        // Windows
-        "C:\\Windows\\Fonts\\msyh.ttc",
-        "C:\\Windows\\Fonts\\simsun.ttc",
-        // Linux
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc",
-    ];
-
-    for path in candidates {
-        if let Ok(data) = std::fs::read(path) {
-            let mut fonts = egui::FontDefinitions::default();
-            fonts.font_data.insert(
-                "cjk".to_owned(),
-                std::sync::Arc::new(egui::FontData::from_owned(data)),
-            );
+fn setup_system_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    if let Some(font) = load_font(system_font_candidates()) {
+        fonts.font_data.insert("system_ui".to_owned(), font.into());
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
             fonts
                 .families
-                .entry(egui::FontFamily::Proportional)
+                .entry(family)
                 .or_default()
-                .push("cjk".to_owned());
-            fonts
-                .families
-                .entry(egui::FontFamily::Monospace)
-                .or_default()
-                .push("cjk".to_owned());
-            ctx.set_fonts(fonts);
-            return;
+                .insert(0, "system_ui".to_owned());
         }
     }
+    ctx.set_fonts(fonts);
+}
+
+fn load_font(paths: Vec<std::path::PathBuf>) -> Option<egui::FontData> {
+    for path in paths {
+        let Ok(data) = std::fs::read(path) else {
+            continue;
+        };
+        return Some(egui::FontData::from_owned(data));
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn system_font_candidates() -> Vec<std::path::PathBuf> {
+    let font_dir = std::env::var_os("WINDIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("C:\\Windows"))
+        .join("Fonts");
+    [
+        "msyh.ttc",
+        "msyhl.ttc",
+        "msyhbd.ttc",
+        "simhei.ttf",
+        "simsun.ttc",
+    ]
+    .into_iter()
+    .map(|file_name| font_dir.join(file_name))
+    .collect()
+}
+
+#[cfg(target_os = "macos")]
+fn system_font_candidates() -> Vec<std::path::PathBuf> {
+    path_candidates([
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+        "/Library/Fonts/Arial Unicode.ttf",
+    ])
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn system_font_candidates() -> Vec<std::path::PathBuf> {
+    let mut candidates = fontconfig_candidates(["sans:lang=zh-cn", "Noto Sans CJK SC"]);
+    candidates.extend(path_candidates([
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc",
+    ]));
+    candidates
+}
+
+#[cfg(not(any(unix, target_os = "windows")))]
+fn system_font_candidates() -> Vec<std::path::PathBuf> {
+    Vec::new()
+}
+
+#[cfg(unix)]
+fn path_candidates(paths: impl IntoIterator<Item = &'static str>) -> Vec<std::path::PathBuf> {
+    paths.into_iter().map(std::path::PathBuf::from).collect()
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn fontconfig_candidates(
+    font_names: impl IntoIterator<Item = &'static str>,
+) -> Vec<std::path::PathBuf> {
+    let mut candidates = Vec::new();
+    for font_name in font_names {
+        let Ok(output) = std::process::Command::new("fc-match")
+            .args(["-f", "%{file}", font_name])
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let path = std::path::PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+        if path.as_os_str().is_empty() || candidates.contains(&path) {
+            continue;
+        }
+        candidates.push(path);
+    }
+    candidates
 }
 
 fn main() -> eframe::Result<()> {
@@ -77,7 +138,7 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             let ctx = &cc.egui_ctx;
-            setup_cjk_fonts(ctx);
+            setup_system_fonts(ctx);
             ctx.all_styles_mut(|style| {
                 style.spacing.item_spacing = egui::vec2(8.0, 6.0);
                 style.spacing.button_padding = egui::vec2(12.0, 4.0);
