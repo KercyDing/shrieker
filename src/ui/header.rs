@@ -4,8 +4,8 @@ use eframe::egui;
 use super::{DIM, GREEN};
 
 /// 渲染顶部面板：标题 + 模式切换 + 主题/语言切换 + 连接状态。
-pub fn render_header(app: &mut App, ctx: &egui::Context) {
-    egui::TopBottomPanel::top("header").show(ctx, |ui| {
+pub fn render_header(app: &mut App, root: &mut egui::Ui, ctx: &egui::Context) {
+    egui::Panel::top("header").show(root, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.label(

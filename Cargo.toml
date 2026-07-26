@@ -1,6 +1,6 @@
 [package]
 name = "shrieker"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A GUI client for the sculk P2P tunnel library"
 license = "GPL-3.0"
@@ -9,7 +9,7 @@ license = "GPL-3.0"
 name = "shrieker"
 identifier = "io.github.kercyding.shrieker"
 short_description = "A GUI client for the sculk P2P tunnel library"
-copyright = "Copyright © 2025 KercyDing"
+copyright = "Copyright © 2026 KercyDing"
 category = "public.app-category.utilities"
 icon = ["assets/icon.icns", "assets/icon.ico"]
 
@@ -29,11 +29,17 @@ assets = [
 ]
 
 [dependencies]
-sculk = { version = "0.3.0-rc.1", features = ["persist", "clipboard"] }
-eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+sculk = { git = "https://github.com/KercyDing/sculk", features = ["persist", "clipboard"] }
+eframe = { version = "0.35", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 image = { version = "0.25", features = ["png"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
-rust-i18n = "3.1.5"
+rust-i18n = "4"
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

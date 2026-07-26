@@ -220,11 +220,12 @@ impl App {
     /// 切换主题。
     pub(crate) fn toggle_theme(&mut self, ctx: &egui::Context) {
         self.dark_mode = !self.dark_mode;
-        if self.dark_mode {
-            ctx.set_visuals(egui::Visuals::dark());
+        let theme = if self.dark_mode {
+            egui::Theme::Dark
         } else {
-            ctx.set_visuals(egui::Visuals::light());
-        }
+            egui::Theme::Light
+        };
+        ctx.set_theme(theme);
         services::persist::save_prefs(self.dark_mode, &rust_i18n::locale());
     }
 }
@@ -262,18 +263,22 @@ fn format_event(event: &TunnelEvent) -> String {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll();
 
         if self.running {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
+    }
 
-        ui::render_header(self, ctx);
+    fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = root.ctx().clone();
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        ui::render_header(self, root, &ctx);
+
+        egui::CentralPanel::default().show(root, |ui| {
             match self.mode {
-                Mode::Host => ui::render_host(self, ui, ctx),
+                Mode::Host => ui::render_host(self, ui, &ctx),
                 Mode::Join => ui::render_join(self, ui),
                 Mode::Relay => ui::render_relay(self, ui),
             }

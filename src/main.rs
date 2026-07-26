@@ -79,18 +79,21 @@ fn main() -> eframe::Result<()> {
         Box::new(|cc| {
             let ctx = &cc.egui_ctx;
             setup_cjk_fonts(ctx);
-            let mut style = (*ctx.style()).clone();
-            style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-            style.spacing.button_padding = egui::vec2(12.0, 4.0);
-            let r = egui::CornerRadius::same(4);
-            style.visuals.widgets.inactive.corner_radius = r;
-            style.visuals.widgets.hovered.corner_radius = r;
-            style.visuals.widgets.active.corner_radius = r;
-            ctx.set_style(style);
+            ctx.all_styles_mut(|style| {
+                style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+                style.spacing.button_padding = egui::vec2(12.0, 4.0);
+                let radius = egui::CornerRadius::same(4);
+                style.visuals.widgets.inactive.corner_radius = radius;
+                style.visuals.widgets.hovered.corner_radius = radius;
+                style.visuals.widgets.active.corner_radius = radius;
+            });
             let app = app::App::new(rt);
-            if !app.dark_mode {
-                ctx.set_visuals(egui::Visuals::light());
-            }
+            let theme = if app.dark_mode {
+                egui::Theme::Dark
+            } else {
+                egui::Theme::Light
+            };
+            ctx.set_theme(theme);
             Ok(Box::new(app))
         }),
     )

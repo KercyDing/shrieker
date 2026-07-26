@@ -1,0 +1,13 @@
+# Run formatting, compilation, and lint checks
+check():
+    cargo fmt --all -- --check
+    cargo check --all-targets
+    cargo clippy --all-targets -- -D warnings
+
+# Build in release mode
+build():
+    cargo build --release
+
+# Run in release mode
+run():
+    cargo run --release
