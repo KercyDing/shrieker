@@ -1,6 +1,6 @@
 [package]
 name = "shrieker"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "A GUI client for the sculk P2P tunnel library"
 license = "GPL-3.0"
@@ -29,7 +29,7 @@ assets = [
 ]
 
 [dependencies]
-sculk = { git = "https://github.com/KercyDing/sculk", features = ["persist", "clipboard"] }
+sculk = { version = "0.4.0", features = ["persist", "clipboard"] }
 eframe = { version = "0.35", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 image = { version = "0.25", features = ["png"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
