@@ -260,6 +260,7 @@ fn render_logs(app: &mut App, ui: &mut egui::Ui) {
                 log_area.height() - 40.0,
             ));
             egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     for line in &app.logs {
