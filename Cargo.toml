@@ -29,7 +29,7 @@ assets = [
 ]
 
 [dependencies]
-sculk = { git = "https://github.com/KercyDing/sculk", rev = "35f230fb37e13fe4f40b3f26b698707d68a418a4", features = ["persist"] }
+sculk = { version = "0.5.0", features = ["persist"] }
 eframe = { version = "0.35", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 image = { version = "0.25", features = ["png"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }

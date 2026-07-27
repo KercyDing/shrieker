@@ -4667,7 +4667,8 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 [[package]]
 name = "sculk"
 version = "0.5.0"
-source = "git+https://github.com/KercyDing/sculk?rev=35f230fb37e13fe4f40b3f26b698707d68a418a4#35f230fb37e13fe4f40b3f26b698707d68a418a4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7facc9047192dec1ac9666248fa76e541281e0bba20e61656f00a1affdd5f52f"
 dependencies = [
  "base64 0.23.0",
  "dirs",
@@ -4868,7 +4869,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "shrieker"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "image",

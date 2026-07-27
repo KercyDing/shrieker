@@ -11,6 +11,12 @@ relay:
 connected:
   en: Connected
   zh-CN: 已连接
+starting:
+  en: Starting
+  zh-CN: 启动中
+stopping:
+  en: Stopping
+  zh-CN: 停止中
 idle:
   en: Idle
   zh-CN: 空闲
@@ -20,6 +26,30 @@ mc_port:
 max_players:
   en: Max Players
   zh-CN: 最大玩家
+share_uri_lifetime:
+  en: Share URI Lifetime
+  zh-CN: 分享链接有效期
+lifetime_always:
+  en: Until closed
+  zh-CN: 直到关房
+lifetime_never:
+  en: Never refresh
+  zh-CN: 永不刷新
+lifetime_1h:
+  en: 1 hour
+  zh-CN: 1 小时
+lifetime_3h:
+  en: 3 hours
+  zh-CN: 3 小时
+lifetime_6h:
+  en: 6 hours
+  zh-CN: 6 小时
+lifetime_12h:
+  en: 12 hours
+  zh-CN: 12 小时
+lifetime_24h:
+  en: 24 hours
+  zh-CN: 24 小时
 stop:
   en: Stop
   zh-CN: 停止
@@ -32,9 +62,24 @@ share_uri:
 copy_clipboard:
   en: Copy to Clipboard
   zh-CN: 复制到剪贴板
+copy:
+  en: Copy
+  zh-CN: 复制
+refresh_share_uri:
+  en: Refresh URI
+  zh-CN: 刷新链接
+next_refresh:
+  en: "Next refresh in %{time}"
+  zh-CN: "%{time} 后刷新"
 local_port:
   en: Local Port
   zh-CN: 本地端口
+auto_port:
+  en: Auto
+  zh-CN: 自动
+minecraft_address:
+  en: Minecraft Address
+  zh-CN: Minecraft 地址
 disconnect:
   en: Disconnect
   zh-CN: 断开
@@ -56,6 +101,12 @@ save:
 connections:
   en: Connections
   zh-CN: 连接
+players:
+  en: Players
+  zh-CN: 玩家
+active_bridges:
+  en: Active Sessions
+  zh-CN: 活动会话
 peer:
   en: Peer
   zh-CN: 节点
@@ -95,9 +146,15 @@ starting_tunnel:
 joining_tunnel:
   en: "[*] Joining tunnel..."
   zh-CN: "[*] 正在加入隧道..."
+refreshing_share_uri:
+  en: "[*] Refreshing Share URI..."
+  zh-CN: "[*] 正在刷新分享链接..."
 share_uri_copied:
   en: "[+] Share URI copied to clipboard"
   zh-CN: "[+] 分享 URI 已复制到剪贴板"
+share_uri_refreshed:
+  en: "[+] Share URI refreshed and copied"
+  zh-CN: "[+] 分享链接已刷新并复制"
 share_uri_failed:
   en: "[-] Export share URI: %{err}"
   zh-CN: "[-] 导出分享 URI 失败: %{err}"
@@ -113,6 +170,12 @@ invalid_share_uri:
 joined:
   en: "[+] Joined!"
   zh-CN: "[+] 已加入!"
+joined_at:
+  en: "[+] Joined! Connect Minecraft to %{addr}"
+  zh-CN: "[+] 已加入！请在 Minecraft 中连接 %{addr}"
+address_copied:
+  en: "[+] Minecraft address copied"
+  zh-CN: "[+] Minecraft 地址已复制"
 join_failed:
   en: "[-] Join failed: %{err}"
   zh-CN: "[-] 加入失败: %{err}"
@@ -146,6 +209,12 @@ reconnecting:
 reconnected:
   en: "[+] Reconnected"
   zh-CN: "[+] 已重连"
+token_rotated:
+  en: "[*] Host access token rotated"
+  zh-CN: "[*] 房间访问令牌已轮换"
+token_rotation_failed:
+  en: "[-] Share URI refresh failed; retrying in %{secs}s"
+  zh-CN: "[-] 分享链接刷新失败；将在 %{secs} 秒后重试"
 auth_failed:
   en: "[-] Auth failed: %{id}"
   zh-CN: "[-] 认证失败: %{id}"

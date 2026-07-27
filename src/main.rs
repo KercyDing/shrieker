@@ -11,6 +11,8 @@ i18n!("locales", fallback = "en");
 
 use eframe::egui;
 
+const UI_FONT_SIZE: f32 = 14.0;
+
 fn load_icon() -> egui::IconData {
     let bytes = include_bytes!("../assets/icon.png");
     let img = image::load_from_memory(bytes)
@@ -37,6 +39,38 @@ fn setup_system_fonts(ctx: &egui::Context) {
         }
     }
     ctx.set_fonts(fonts);
+}
+
+fn setup_ui_style(ctx: &egui::Context) {
+    ctx.all_styles_mut(|style| {
+        style.spacing.item_spacing = egui::vec2(6.0, 3.0);
+        style.spacing.button_padding = egui::vec2(6.0, 2.0);
+        style.spacing.indent = 14.0;
+        style.text_styles.insert(
+            egui::TextStyle::Heading,
+            egui::FontId::new(UI_FONT_SIZE + 3.0, egui::FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            egui::TextStyle::Body,
+            egui::FontId::new(UI_FONT_SIZE, egui::FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            egui::TextStyle::Button,
+            egui::FontId::new(UI_FONT_SIZE, egui::FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            egui::TextStyle::Small,
+            egui::FontId::new(UI_FONT_SIZE - 2.0, egui::FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            egui::TextStyle::Monospace,
+            egui::FontId::new(UI_FONT_SIZE, egui::FontFamily::Monospace),
+        );
+        let radius = egui::CornerRadius::same(4);
+        style.visuals.widgets.inactive.corner_radius = radius;
+        style.visuals.widgets.hovered.corner_radius = radius;
+        style.visuals.widgets.active.corner_radius = radius;
+    });
 }
 
 fn load_font(paths: Vec<std::path::PathBuf>) -> Option<egui::FontData> {
@@ -139,14 +173,7 @@ fn main() -> eframe::Result<()> {
         Box::new(|cc| {
             let ctx = &cc.egui_ctx;
             setup_system_fonts(ctx);
-            ctx.all_styles_mut(|style| {
-                style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-                style.spacing.button_padding = egui::vec2(12.0, 4.0);
-                let radius = egui::CornerRadius::same(4);
-                style.visuals.widgets.inactive.corner_radius = radius;
-                style.visuals.widgets.hovered.corner_radius = radius;
-                style.visuals.widgets.active.corner_radius = radius;
-            });
+            setup_ui_style(ctx);
             let app = app::App::new(rt, ctx.clone());
             let theme = if app.dark_mode {
                 egui::Theme::Dark

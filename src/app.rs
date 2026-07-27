@@ -1,15 +1,21 @@
 use crate::settings;
 use crate::ui;
 use eframe::egui;
-use sculk::persist::Profile;
+use sculk::persist::{self, HostState, Profile, TokenRefreshSetting};
 use sculk::tunnel::{
-    HostConfig, HostOptions, JoinOptions, JoinUri, LocalPort, SecretKey, TunnelEvent, TunnelMode,
-    TunnelPhase, TunnelService, TunnelStatus, TunnelUpdate,
+    ConnectionSnapshot, HostConfig, HostedServiceHandle, HostedServiceOptions, HostedServiceStatus,
+    JoinOptions, JoinUri, LocalPort, NodeOptions, SculkNode, SecretKey, ServiceId,
+    TokenRefreshPolicy, TunnelEvent, TunnelPhase, TunnelService, TunnelStatus, TunnelUpdate,
 };
-use std::num::NonZeroU16;
-use tokio::sync::mpsc;
+use std::net::{Ipv4Addr, SocketAddr};
+use std::num::{NonZeroU16, NonZeroU32};
+use std::path::{Path, PathBuf};
+use std::sync::mpsc as std_mpsc;
+use std::time::Duration;
+use tokio::sync::{broadcast, mpsc};
 
 const UPDATES_PER_FRAME_MAX: usize = 256;
+const EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(PartialEq, Clone, Copy)]
 pub(crate) enum Mode {
@@ -18,19 +24,57 @@ pub(crate) enum Mode {
     Relay,
 }
 
+enum HostCommand {
+    Rotate,
+    Stop { done: Option<std_mpsc::Sender<()>> },
+}
+
+enum HostUpdate {
+    Started {
+        uri: String,
+        status: HostedServiceStatus,
+    },
+    Status(HostedServiceStatus),
+    UriChanged {
+        uri: String,
+        status: HostedServiceStatus,
+    },
+    Event(TunnelEvent),
+    Error(String),
+    Failed(String),
+    Stopped(Result<(), String>),
+}
+
+struct HostStart {
+    mc_port: u16,
+    max_players: Option<u32>,
+    secret_key: SecretKey,
+    relay_url: Option<sculk::tunnel::RelayUrl>,
+    token_refresh: TokenRefreshPolicy,
+    state_path: PathBuf,
+}
+
 pub struct App {
     rt: tokio::runtime::Runtime,
-    service: TunnelService,
+    join_service: TunnelService,
     repaint: egui::Context,
-    tunnel_rx: mpsc::UnboundedReceiver<TunnelUpdate>,
-    stop_tx: mpsc::UnboundedSender<Result<(), String>>,
-    stop_rx: mpsc::UnboundedReceiver<Result<(), String>>,
+    join_rx: mpsc::UnboundedReceiver<TunnelUpdate>,
+    join_stop_tx: mpsc::UnboundedSender<Result<(), String>>,
+    join_stop_rx: mpsc::UnboundedReceiver<Result<(), String>>,
+    host_tx: Option<mpsc::UnboundedSender<HostCommand>>,
+    host_rx: mpsc::UnboundedReceiver<HostUpdate>,
+    host_update_tx: mpsc::UnboundedSender<HostUpdate>,
     stop_pending: bool,
+    rotate_pending: bool,
+    phase: TunnelPhase,
+    active_mode: Option<Mode>,
     pub(crate) mode: Mode,
     pub(crate) host_port: String,
     pub(crate) max_players: String,
+    pub(crate) token_refresh: TokenRefreshSetting,
     pub(crate) join_uri_input: String,
     pub(crate) join_port: String,
+    pub(crate) join_auto_port: bool,
     pub(crate) share_uri: Option<String>,
     pub(crate) logs: Vec<String>,
     pub(crate) profile: Profile,
@@ -38,6 +82,7 @@ pub struct App {
     pub(crate) relay_custom: bool,
     pub(crate) relay_url: String,
     pub(crate) tunnel: TunnelStatus,
+    pub(crate) host_status: Option<HostedServiceStatus>,
     pub(crate) dark_mode: bool,
 }
 
@@ -46,10 +91,11 @@ impl App {
         let loaded = settings::load();
         rust_i18n::set_locale(&loaded.locale);
 
-        let service = TunnelService::new();
-        let tunnel = service.status();
-        let tunnel_rx = spawn_subscription(&rt, service.subscribe(), repaint.clone());
-        let (stop_tx, stop_rx) = mpsc::unbounded_channel();
+        let join_service = TunnelService::new();
+        let tunnel = join_service.status();
+        let join_rx = spawn_join_subscription(&rt, join_service.subscribe(), repaint.clone());
+        let (join_stop_tx, join_stop_rx) = mpsc::unbounded_channel();
+        let (host_update_tx, host_rx) = mpsc::unbounded_channel();
 
         let mut logs = loaded.errors;
         if logs.is_empty() {
@@ -58,17 +104,25 @@ impl App {
 
         Self {
             rt,
-            service,
+            join_service,
             repaint,
-            tunnel_rx,
-            stop_tx,
-            stop_rx,
+            join_rx,
+            join_stop_tx,
+            join_stop_rx,
+            host_tx: None,
+            host_rx,
+            host_update_tx,
             stop_pending: false,
+            rotate_pending: false,
+            phase: TunnelPhase::Idle,
+            active_mode: None,
             mode: Mode::Host,
             host_port: loaded.profile.host.port.to_string(),
             max_players: String::new(),
+            token_refresh: loaded.profile.host.token_refresh,
             join_uri_input: String::new(),
             join_port: loaded.profile.join.port.to_string(),
+            join_auto_port: true,
             share_uri: None,
             relay_custom: loaded.profile.relay.custom,
             relay_url: loaded.profile.relay.url.clone().unwrap_or_default(),
@@ -76,16 +130,39 @@ impl App {
             secret_key: loaded.secret_key,
             logs,
             tunnel,
+            host_status: None,
             dark_mode: loaded.dark_mode,
         }
     }
 
     pub(crate) fn is_idle(&self) -> bool {
-        self.tunnel.state.phase == TunnelPhase::Idle
+        self.phase == TunnelPhase::Idle
+    }
+
+    pub(crate) fn phase(&self) -> TunnelPhase {
+        self.phase
     }
 
     pub(crate) fn stop_pending(&self) -> bool {
         self.stop_pending
+    }
+
+    pub(crate) fn rotate_pending(&self) -> bool {
+        self.rotate_pending
+    }
+
+    pub(crate) fn join_local_addr(&self) -> Option<SocketAddr> {
+        (self.active_mode == Some(Mode::Join))
+            .then_some(self.tunnel.state.local_addr)
+            .flatten()
+    }
+
+    pub(crate) fn join_connections(&self) -> &[ConnectionSnapshot] {
+        if self.active_mode == Some(Mode::Join) {
+            &self.tunnel.connections
+        } else {
+            &[]
+        }
     }
 
     /// Saves non-secret user settings.
@@ -96,6 +173,7 @@ impl App {
         if let Ok(port) = self.join_port.parse() {
             self.profile.join.port = port;
         }
+        self.profile.host.token_refresh = self.token_refresh;
         self.profile.relay.custom = self.relay_custom;
         self.profile.relay.url = (!self.relay_url.is_empty()).then(|| self.relay_url.clone());
         if let Err(error) = self.profile.save() {
@@ -105,7 +183,7 @@ impl App {
     }
 
     pub(crate) fn start_host(&mut self) {
-        let port = match self.host_port.parse::<u16>() {
+        let mc_port = match parse_host_port(&self.host_port) {
             Ok(port) => port,
             Err(error) => {
                 self.logs.push(t!("host_failed", err = error).to_string());
@@ -119,6 +197,11 @@ impl App {
                 return;
             }
         };
+        let Some(secret_key) = self.secret_key.clone() else {
+            self.logs
+                .push(t!("host_failed", err = "persistent key unavailable").to_string());
+            return;
+        };
         let relay_url = match self.profile.resolve_relay_url(None) {
             Ok(relay_url) => relay_url,
             Err(error) => {
@@ -126,18 +209,48 @@ impl App {
                 return;
             }
         };
-        let config = HostConfig::new().max_players(max_players);
-        let options = HostOptions::new(port)
-            .secret_key(self.secret_key.clone())
-            .relay_url(relay_url)
-            .config(config);
+        let state_path = match persist::default_host_state_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.logs.push(t!("host_failed", err = error).to_string());
+                return;
+            }
+        };
 
         self.save_profile();
+        let start = HostStart {
+            mc_port,
+            max_players,
+            secret_key,
+            relay_url,
+            token_refresh: token_refresh_policy(self.token_refresh),
+            state_path,
+        };
+        let (host_tx, host_rx) = mpsc::unbounded_channel();
+        self.host_tx = Some(host_tx);
+        self.phase = TunnelPhase::Starting;
+        self.active_mode = Some(Mode::Host);
         self.logs.push(t!("starting_tunnel").to_string());
-        if let Err(error) = self.rt.block_on(self.service.start_host(options)) {
-            self.logs.push(t!("host_failed", err = error).to_string());
+
+        let update_tx = self.host_update_tx.clone();
+        let repaint = self.repaint.clone();
+        self.rt.spawn(async move {
+            run_host(start, host_rx, update_tx).await;
+            repaint.request_repaint();
+        });
+    }
+
+    pub(crate) fn rotate_host_uri(&mut self) {
+        if self.rotate_pending || self.phase != TunnelPhase::Active {
+            return;
         }
-        self.tunnel = self.service.status();
+        let Some(host_tx) = &self.host_tx else {
+            return;
+        };
+        if host_tx.send(HostCommand::Rotate).is_ok() {
+            self.rotate_pending = true;
+            self.logs.push(t!("refreshing_share_uri").to_string());
+        }
     }
 
     pub(crate) fn start_join(&mut self) {
@@ -149,7 +262,7 @@ impl App {
                 return;
             }
         };
-        let local_port = match parse_local_port(&self.join_port) {
+        let local_port = match parse_local_port(self.join_auto_port, &self.join_port) {
             Ok(port) => port,
             Err(error) => {
                 self.logs.push(t!("join_failed", err = error).to_string());
@@ -160,20 +273,36 @@ impl App {
 
         self.save_profile();
         self.logs.push(t!("joining_tunnel").to_string());
-        if let Err(error) = self.rt.block_on(self.service.start_join(options)) {
+        if let Err(error) = self.rt.block_on(self.join_service.start_join(options)) {
             self.logs.push(t!("join_failed", err = error).to_string());
+            return;
         }
-        self.tunnel = self.service.status();
+        self.active_mode = Some(Mode::Join);
+        self.tunnel = self.join_service.status();
+        self.phase = self.tunnel.state.phase;
     }
 
     pub(crate) fn stop(&mut self) {
-        if self.stop_pending {
+        if self.stop_pending || self.is_idle() {
             return;
         }
         self.stop_pending = true;
 
-        let service = self.service.clone();
-        let tx = self.stop_tx.clone();
+        if self.active_mode == Some(Mode::Host) {
+            let sent = self
+                .host_tx
+                .as_ref()
+                .is_some_and(|tx| tx.send(HostCommand::Stop { done: None }).is_ok());
+            if !sent {
+                self.stop_pending = false;
+                self.logs
+                    .push(t!("stop_failed", err = "host task unavailable").to_string());
+            }
+            return;
+        }
+
+        let service = self.join_service.clone();
+        let tx = self.join_stop_tx.clone();
         let repaint = self.repaint.clone();
         self.rt.spawn(async move {
             let result = service.shutdown().await.map_err(|error| error.to_string());
@@ -184,12 +313,18 @@ impl App {
 
     fn poll(&mut self) {
         for _ in 0..UPDATES_PER_FRAME_MAX {
-            let Ok(update) = self.tunnel_rx.try_recv() else {
+            let Ok(update) = self.join_rx.try_recv() else {
                 break;
             };
-            self.apply_tunnel_update(update);
+            self.apply_join_update(update);
         }
-        if let Ok(result) = self.stop_rx.try_recv() {
+        for _ in 0..UPDATES_PER_FRAME_MAX {
+            let Ok(update) = self.host_rx.try_recv() else {
+                break;
+            };
+            self.apply_host_update(update);
+        }
+        if let Ok(result) = self.join_stop_rx.try_recv() {
             self.stop_pending = false;
             if let Err(error) = result {
                 self.logs.push(t!("stop_failed", err = error).to_string());
@@ -197,47 +332,96 @@ impl App {
         }
     }
 
-    fn apply_tunnel_update(&mut self, update: TunnelUpdate) {
+    fn apply_join_update(&mut self, update: TunnelUpdate) {
         match update {
-            TunnelUpdate::Status(status) => self.apply_status(status),
+            TunnelUpdate::Status(status) => self.apply_join_status(status),
             TunnelUpdate::Event(event) => self.logs.push(format_event(&event)),
             _ => {}
         }
     }
 
-    fn apply_status(&mut self, status: TunnelStatus) {
-        let previous = self.tunnel.state.clone();
-        let current = &status.state;
-        if current.phase != TunnelPhase::Active || current.mode != Some(TunnelMode::Host) {
-            self.share_uri = None;
+    fn apply_join_status(&mut self, status: TunnelStatus) {
+        if self.active_mode != Some(Mode::Join) && status.state.phase == TunnelPhase::Idle {
+            self.tunnel = status;
+            return;
         }
 
-        if previous.phase != TunnelPhase::Active && current.phase == TunnelPhase::Active {
-            match current.mode {
-                Some(TunnelMode::Host) => {
-                    self.logs.push(t!("host_ready").to_string());
-                    match current.join_uri.as_ref().map(JoinUri::expose_secret_uri) {
-                        Some(Ok(uri)) => {
-                            self.repaint.copy_text(uri.clone());
-                            self.share_uri = Some(uri);
-                            self.logs.push(t!("share_uri_copied").to_string());
-                        }
-                        Some(Err(error)) => self
-                            .logs
-                            .push(t!("share_uri_failed", err = error).to_string()),
-                        None => self
-                            .logs
-                            .push(t!("share_uri_failed", err = "missing Join URI").to_string()),
-                    }
-                }
-                Some(TunnelMode::Join) => self.logs.push(t!("joined").to_string()),
-                None => {}
+        let previous = self.phase;
+        self.phase = status.state.phase;
+        if previous != TunnelPhase::Active && self.phase == TunnelPhase::Active {
+            if let Some(addr) = status.state.local_addr {
+                self.logs.push(t!("joined_at", addr = addr).to_string());
+            } else {
+                self.logs.push(t!("joined").to_string());
             }
-        } else if previous.phase == TunnelPhase::Stopping && current.phase == TunnelPhase::Idle {
-            self.logs.push(t!("tunnel_closed").to_string());
+        } else if previous == TunnelPhase::Stopping && self.phase == TunnelPhase::Idle {
+            self.finish_stopped();
+        } else if previous == TunnelPhase::Starting && self.phase == TunnelPhase::Idle {
+            self.active_mode = None;
         }
-
         self.tunnel = status;
+    }
+
+    fn apply_host_update(&mut self, update: HostUpdate) {
+        match update {
+            HostUpdate::Started { uri, status } => {
+                self.phase = TunnelPhase::Active;
+                self.host_status = Some(status);
+                self.set_share_uri(uri, false);
+                self.logs.push(t!("host_ready").to_string());
+            }
+            HostUpdate::Status(status) => self.host_status = Some(status),
+            HostUpdate::UriChanged { uri, status } => {
+                self.rotate_pending = false;
+                self.host_status = Some(status);
+                self.set_share_uri(uri, true);
+            }
+            HostUpdate::Event(event) => self.logs.push(format_event(&event)),
+            HostUpdate::Error(error) => {
+                self.rotate_pending = false;
+                self.logs.push(t!("error_msg", msg = error).to_string());
+            }
+            HostUpdate::Failed(error) => {
+                self.logs.push(t!("host_failed", err = error).to_string());
+                self.finish_host();
+            }
+            HostUpdate::Stopped(result) => {
+                if let Err(error) = result {
+                    self.logs.push(t!("stop_failed", err = error).to_string());
+                } else {
+                    self.logs.push(t!("tunnel_closed").to_string());
+                }
+                self.finish_host();
+            }
+        }
+    }
+
+    fn set_share_uri(&mut self, uri: String, refreshed: bool) {
+        self.repaint.copy_text(uri.clone());
+        self.share_uri = Some(uri);
+        let message = if refreshed {
+            t!("share_uri_refreshed")
+        } else {
+            t!("share_uri_copied")
+        };
+        self.logs.push(message.to_string());
+    }
+
+    fn finish_stopped(&mut self) {
+        self.logs.push(t!("tunnel_closed").to_string());
+        self.stop_pending = false;
+        self.phase = TunnelPhase::Idle;
+        self.active_mode = None;
+    }
+
+    fn finish_host(&mut self) {
+        self.stop_pending = false;
+        self.rotate_pending = false;
+        self.phase = TunnelPhase::Idle;
+        self.active_mode = None;
+        self.host_tx = None;
+        self.host_status = None;
+        self.share_uri = None;
     }
 
     /// 切换语言。
@@ -270,9 +454,218 @@ impl App {
                 .push(t!("save_preferences_err", err = error).to_string());
         }
     }
+
+    fn shutdown_on_exit(&mut self) {
+        if let Some(host_tx) = self.host_tx.take() {
+            let (done_tx, done_rx) = std_mpsc::channel();
+            if host_tx
+                .send(HostCommand::Stop {
+                    done: Some(done_tx),
+                })
+                .is_ok()
+            {
+                let _ = done_rx.recv_timeout(EXIT_TIMEOUT);
+            }
+        }
+        let service = self.join_service.clone();
+        let (done_tx, done_rx) = std_mpsc::channel();
+        self.rt.spawn(async move {
+            let _ = service.shutdown().await;
+            let _ = done_tx.send(());
+        });
+        let _ = done_rx.recv_timeout(EXIT_TIMEOUT);
+    }
 }
 
-fn spawn_subscription(
+async fn run_host(
+    start: HostStart,
+    mut commands: mpsc::UnboundedReceiver<HostCommand>,
+    updates: mpsc::UnboundedSender<HostUpdate>,
+) {
+    let saved = match persist::load_host_state(&start.state_path) {
+        Ok(saved) => saved,
+        Err(error) => {
+            let _ = updates.send(HostUpdate::Failed(error.to_string()));
+            return;
+        }
+    };
+    let service_id = saved
+        .as_ref()
+        .map_or_else(ServiceId::generate, |state| state.service_id);
+    let token_state = saved.map(|state| state.token_state);
+    let node = match SculkNode::bind(NodeOptions {
+        secret_key: Some(start.secret_key),
+        relay_url: start.relay_url,
+        ..NodeOptions::default()
+    })
+    .await
+    {
+        Ok(node) => node,
+        Err(error) => {
+            let _ = updates.send(HostUpdate::Failed(error.to_string()));
+            return;
+        }
+    };
+    let host = match node
+        .start_service(HostedServiceOptions {
+            service_id,
+            target_addr: SocketAddr::from((Ipv4Addr::LOCALHOST, start.mc_port)),
+            token_state,
+            token_refresh: start.token_refresh,
+            config: HostConfig::new().max_players(start.max_players),
+        })
+        .await
+    {
+        Ok(host) => host,
+        Err(error) => {
+            node.close().await;
+            let _ = updates.send(HostUpdate::Failed(error.to_string()));
+            return;
+        }
+    };
+    let mut events = match host.subscribe().await {
+        Ok(events) => events,
+        Err(error) => {
+            node.close().await;
+            let _ = updates.send(HostUpdate::Failed(error.to_string()));
+            return;
+        }
+    };
+    let mut statuses = match host.subscribe_status().await {
+        Ok(statuses) => statuses,
+        Err(error) => {
+            node.close().await;
+            let _ = updates.send(HostUpdate::Failed(error.to_string()));
+            return;
+        }
+    };
+    if let Err(error) = persist_host_state(&start.state_path, &host).await {
+        node.close().await;
+        let _ = updates.send(HostUpdate::Failed(error));
+        return;
+    }
+    let status = match host.status().await {
+        Ok(status) => status,
+        Err(error) => {
+            node.close().await;
+            let _ = updates.send(HostUpdate::Failed(error.to_string()));
+            return;
+        }
+    };
+    let uri = match expose_host_uri(&host).await {
+        Ok(uri) => uri,
+        Err(error) => {
+            node.close().await;
+            let _ = updates.send(HostUpdate::Failed(error));
+            return;
+        }
+    };
+    let mut uri_generation = status.uri_generation;
+    if updates.send(HostUpdate::Started { uri, status }).is_err() {
+        node.close().await;
+        return;
+    }
+
+    loop {
+        tokio::select! {
+            command = commands.recv() => {
+                match command {
+                    Some(HostCommand::Rotate) => {
+                        if let Err(error) = host.rotate_token().await {
+                            let _ = updates.send(HostUpdate::Error(error.to_string()));
+                        }
+                    }
+                    Some(HostCommand::Stop { done }) => {
+                        let result = host.stop().await.map_err(|error| error.to_string());
+                        node.close().await;
+                        let _ = updates.send(HostUpdate::Stopped(result));
+                        if let Some(done) = done {
+                            let _ = done.send(());
+                        }
+                        return;
+                    }
+                    None => {
+                        node.close().await;
+                        return;
+                    }
+                }
+            }
+            event = events.recv() => {
+                match event {
+                    Ok(event) => {
+                        let _ = updates.send(HostUpdate::Event(event));
+                    }
+                    Err(broadcast::error::RecvError::Lagged(count)) => {
+                        let _ = updates.send(HostUpdate::Error(
+                            format!("missed {count} host events")
+                        ));
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        node.close().await;
+                        let _ = updates.send(HostUpdate::Failed(
+                            "host event channel closed unexpectedly".to_owned()
+                        ));
+                        return;
+                    }
+                }
+            }
+            status = statuses.recv() => {
+                let Some(status) = status else {
+                    node.close().await;
+                    let _ = updates.send(HostUpdate::Failed(
+                        "host status channel closed unexpectedly".to_owned()
+                    ));
+                    return;
+                };
+                if status.uri_generation > uri_generation {
+                    uri_generation = status.uri_generation;
+                    if let Err(error) = persist_host_state(&start.state_path, &host).await {
+                        node.close().await;
+                        let _ = updates.send(HostUpdate::Failed(error));
+                        return;
+                    }
+                    match expose_host_uri(&host).await {
+                        Ok(uri) => {
+                            let _ = updates.send(HostUpdate::UriChanged { uri, status });
+                        }
+                        Err(error) => {
+                            node.close().await;
+                            let _ = updates.send(HostUpdate::Failed(error));
+                            return;
+                        }
+                    }
+                } else {
+                    let _ = updates.send(HostUpdate::Status(status));
+                }
+            }
+        }
+    }
+}
+
+async fn persist_host_state(path: &Path, host: &HostedServiceHandle) -> Result<(), String> {
+    let token_state = host
+        .token_state()
+        .await
+        .map_err(|error| error.to_string())?;
+    persist::save_host_state(
+        path,
+        &HostState {
+            service_id: host.service_id(),
+            token_state,
+        },
+    )
+    .map_err(|error| error.to_string())
+}
+
+async fn expose_host_uri(host: &HostedServiceHandle) -> Result<String, String> {
+    host.join_uri()
+        .await
+        .map_err(|error| error.to_string())?
+        .expose_secret_uri()
+        .map_err(|error| error.to_string())
+}
+
+fn spawn_join_subscription(
     rt: &tokio::runtime::Runtime,
     mut subscription: sculk::tunnel::TunnelSubscription,
     repaint: egui::Context,
@@ -289,15 +682,43 @@ fn spawn_subscription(
     rx
 }
 
-fn parse_local_port(value: &str) -> Result<LocalPort, std::num::ParseIntError> {
-    value.parse::<NonZeroU16>().map(LocalPort::Fixed)
+fn parse_host_port(value: &str) -> Result<u16, std::num::ParseIntError> {
+    value.parse::<NonZeroU16>().map(NonZeroU16::get)
+}
+
+fn parse_local_port(auto: bool, value: &str) -> Result<LocalPort, std::num::ParseIntError> {
+    if auto {
+        Ok(LocalPort::Auto)
+    } else {
+        value.parse::<NonZeroU16>().map(LocalPort::Fixed)
+    }
 }
 
 fn parse_optional_u32(value: &str) -> Result<Option<u32>, std::num::ParseIntError> {
     if value.is_empty() {
         Ok(None)
     } else {
-        value.parse().map(Some)
+        value.parse::<NonZeroU32>().map(|value| Some(value.get()))
+    }
+}
+
+pub(crate) fn token_refresh_policy(setting: TokenRefreshSetting) -> TokenRefreshPolicy {
+    match setting {
+        TokenRefreshSetting::Always => TokenRefreshPolicy::Always,
+        TokenRefreshSetting::Never => TokenRefreshPolicy::Never,
+        TokenRefreshSetting::OneHour => TokenRefreshPolicy::After(Duration::from_secs(60 * 60)),
+        TokenRefreshSetting::ThreeHours => {
+            TokenRefreshPolicy::After(Duration::from_secs(3 * 60 * 60))
+        }
+        TokenRefreshSetting::SixHours => {
+            TokenRefreshPolicy::After(Duration::from_secs(6 * 60 * 60))
+        }
+        TokenRefreshSetting::TwelveHours => {
+            TokenRefreshPolicy::After(Duration::from_secs(12 * 60 * 60))
+        }
+        TokenRefreshSetting::TwentyFourHours => {
+            TokenRefreshPolicy::After(Duration::from_secs(24 * 60 * 60))
+        }
     }
 }
 
@@ -324,6 +745,10 @@ fn format_event(event: &TunnelEvent) -> String {
         }
         TunnelEvent::Reconnecting { attempt } => t!("reconnecting", n = attempt).to_string(),
         TunnelEvent::Reconnected => t!("reconnected").to_string(),
+        TunnelEvent::TokenRotated => t!("token_rotated").to_string(),
+        TunnelEvent::TokenRotationFailed { retry_in } => {
+            t!("token_rotation_failed", secs = retry_in.as_secs()).to_string()
+        }
         TunnelEvent::AuthFailed { id } => t!("auth_failed", id = id).to_string(),
         TunnelEvent::PlayerRejected { id, reason } => {
             t!("rejected", id = id, reason = reason).to_string()
@@ -337,13 +762,17 @@ impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll();
 
-        if self.stop_pending || !self.is_idle() {
-            ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        if self.stop_pending || self.rotate_pending || !self.is_idle() {
+            ctx.request_repaint_after(Duration::from_millis(200));
         }
     }
 
     fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
         ui::render(self, root);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.shutdown_on_exit();
     }
 }
 
@@ -364,18 +793,34 @@ mod tests {
     #[test]
     fn rejects_invalid_optional_number() {
         assert!(parse_optional_u32("eight").is_err());
+        assert!(parse_optional_u32("0").is_err());
     }
 
     #[test]
-    fn parses_non_zero_local_port() {
+    fn parses_non_zero_host_port() {
+        assert_eq!(parse_host_port("25565"), Ok(25565));
+        assert!(parse_host_port("0").is_err());
+    }
+
+    #[test]
+    fn uses_auto_local_port_without_parsing_input() {
+        assert_eq!(parse_local_port(true, "invalid"), Ok(LocalPort::Auto));
+    }
+
+    #[test]
+    fn parses_fixed_local_port() {
         assert!(matches!(
-            parse_local_port("30000"),
+            parse_local_port(false, "30000"),
             Ok(LocalPort::Fixed(port)) if port.get() == 30000
         ));
+        assert!(parse_local_port(false, "0").is_err());
     }
 
     #[test]
-    fn rejects_zero_local_port() {
-        assert!(parse_local_port("0").is_err());
+    fn maps_timed_refresh_policy() {
+        assert_eq!(
+            token_refresh_policy(TokenRefreshSetting::ThreeHours),
+            TokenRefreshPolicy::After(Duration::from_secs(3 * 60 * 60))
+        );
     }
 }
