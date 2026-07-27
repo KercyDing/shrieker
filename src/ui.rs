@@ -227,9 +227,6 @@ fn action_button(ui: &mut egui::Ui, enabled: bool, label: &str) -> bool {
 }
 
 fn render_relay(app: &mut App, ui: &mut egui::Ui) {
-    ui.heading(egui::RichText::new(t!("relay_settings").as_ref()).color(BLUE));
-    ui.add_space(4.0);
-
     ui.radio_value(&mut app.relay_custom, false, t!("default_relay").as_ref());
     ui.radio_value(&mut app.relay_custom, true, t!("custom_relay").as_ref());
 

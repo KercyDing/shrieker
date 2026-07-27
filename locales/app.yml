@@ -1,40 +1,42 @@
 _version: 2
+
 host:
   en: Host
-  zh-CN: 建房
+  zh-CN: 创建房间
 join:
   en: Join
-  zh-CN: 加入
+  zh-CN: 加入房间
 relay:
-  en: Relay
-  zh-CN: 中继
+  en: Relay Settings
+  zh-CN: 中继设置
 connected:
   en: Connected
   zh-CN: 已连接
 starting:
   en: Starting
-  zh-CN: 启动中
+  zh-CN: 正在启动
 stopping:
   en: Stopping
-  zh-CN: 停止中
+  zh-CN: 正在停止
 idle:
   en: Idle
-  zh-CN: 空闲
+  zh-CN: 未运行
+
 mc_port:
   en: MC Port
-  zh-CN: MC 端口
+  zh-CN: Minecraft 端口
 max_players:
   en: Max Players
-  zh-CN: 最大玩家
+  zh-CN: 最大玩家数
 share_uri_lifetime:
   en: Share URI Lifetime
   zh-CN: 分享链接有效期
 lifetime_always:
   en: Until closed
-  zh-CN: 直到关房
+  zh-CN: 关闭房间前有效
 lifetime_never:
   en: Never refresh
-  zh-CN: 永不刷新
+  zh-CN: 不自动刷新
 lifetime_1h:
   en: 1 hour
   zh-CN: 1 小时
@@ -50,15 +52,16 @@ lifetime_12h:
 lifetime_24h:
   en: 24 hours
   zh-CN: 24 小时
+
 stop:
   en: Stop
   zh-CN: 停止
 start_host:
   en: Start Host
-  zh-CN: 开始建房
+  zh-CN: 创建房间
 share_uri:
   en: Share URI
-  zh-CN: 分享 URI
+  zh-CN: 分享链接
 copy_clipboard:
   en: Copy to Clipboard
   zh-CN: 复制到剪贴板
@@ -67,166 +70,182 @@ copy:
   zh-CN: 复制
 refresh_share_uri:
   en: Refresh URI
-  zh-CN: 刷新链接
+  zh-CN: 刷新分享链接
 next_refresh:
   en: "Next refresh in %{time}"
-  zh-CN: "%{time} 后刷新"
+  zh-CN: "距下次刷新还有 %{time}"
+
 local_port:
   en: Local Port
   zh-CN: 本地端口
 auto_port:
   en: Auto
-  zh-CN: 自动
+  zh-CN: 自动选择
 minecraft_address:
   en: Minecraft Address
-  zh-CN: Minecraft 地址
+  zh-CN: Minecraft 连接地址
 disconnect:
   en: Disconnect
-  zh-CN: 断开
+  zh-CN: 断开连接
 join_btn:
   en: Join
-  zh-CN: 加入
-relay_settings:
-  en: Relay Settings
-  zh-CN: 中继设置
+  zh-CN: 加入房间
+
 default_relay:
   en: Default relay
   zh-CN: 默认中继
 custom_relay:
   en: Custom relay
-  zh-CN: 自建中继
+  zh-CN: 自定义中继
 save:
   en: Save
   zh-CN: 保存
+
 connections:
   en: Connections
-  zh-CN: 连接
+  zh-CN: 连接状态
 players:
   en: Players
-  zh-CN: 玩家
+  zh-CN: 在线玩家
 active_bridges:
   en: Active Sessions
-  zh-CN: 活动会话
+  zh-CN: 活跃会话
 peer:
   en: Peer
-  zh-CN: 节点
+  zh-CN: 对端
 rtt:
   en: RTT
   zh-CN: 延迟
 route:
   en: Route
-  zh-CN: 路由
+  zh-CN: 连接方式
 traffic:
   en: Traffic
-  zh-CN: 流量
+  zh-CN: 网络流量
 relay_route:
   en: relay
-  zh-CN: 中继
+  zh-CN: 中继连接
 direct_route:
   en: direct
   zh-CN: 直连
+
 logs:
   en: Logs
-  zh-CN: 日志
+  zh-CN: 运行日志
 clear:
   en: Clear
-  zh-CN: 清空
+  zh-CN: 清空日志
+
 profile_loaded:
   en: "[+] Profile and key loaded"
-  zh-CN: "[+] 配置和密钥已加载"
+  zh-CN: "[+] 配置和密钥加载成功"
 save_profile_err:
   en: "[-] Save profile: %{err}"
-  zh-CN: "[-] 保存配置失败: %{err}"
+  zh-CN: "[-] 配置保存失败：%{err}"
 save_preferences_err:
   en: "[-] Save preferences: %{err}"
-  zh-CN: "[-] 保存偏好失败: %{err}"
+  zh-CN: "[-] 偏好设置保存失败：%{err}"
+
 starting_tunnel:
   en: "[*] Starting tunnel..."
-  zh-CN: "[*] 正在启动隧道..."
+  zh-CN: "[*] 正在建立连接..."
 joining_tunnel:
   en: "[*] Joining tunnel..."
-  zh-CN: "[*] 正在加入隧道..."
+  zh-CN: "[*] 正在加入房间..."
 refreshing_share_uri:
   en: "[*] Refreshing Share URI..."
   zh-CN: "[*] 正在刷新分享链接..."
+
 share_uri_copied:
   en: "[+] Share URI copied to clipboard"
-  zh-CN: "[+] 分享 URI 已复制到剪贴板"
+  zh-CN: "[+] 分享链接已复制到剪贴板"
 share_uri_refreshed:
   en: "[+] Share URI refreshed and copied"
-  zh-CN: "[+] 分享链接已刷新并复制"
+  zh-CN: "[+] 分享链接已刷新并复制到剪贴板"
 share_uri_failed:
   en: "[-] Export share URI: %{err}"
-  zh-CN: "[-] 导出分享 URI 失败: %{err}"
+  zh-CN: "[-] 分享链接生成失败：%{err}"
+
 host_ready:
   en: "[+] Host ready"
-  zh-CN: "[+] 建房就绪"
+  zh-CN: "[+] 房间已创建，可以加入"
 host_failed:
   en: "[-] Host failed: %{err}"
-  zh-CN: "[-] 建房失败: %{err}"
+  zh-CN: "[-] 创建房间失败：%{err}"
 invalid_share_uri:
   en: "[-] Invalid share URI: %{err}"
-  zh-CN: "[-] 无效分享 URI: %{err}"
+  zh-CN: "[-] 分享链接无效：%{err}"
+
 joined:
   en: "[+] Joined!"
-  zh-CN: "[+] 已加入!"
+  zh-CN: "[+] 已成功加入房间"
 joined_at:
   en: "[+] Joined! Published to the LAN list; manual address: %{addr}"
-  zh-CN: "[+] 已加入！已发布到局域网列表；手动地址: %{addr}"
+  zh-CN: "[+] 已成功加入！房间已显示在局域网游戏列表中；也可手动连接：%{addr}"
+
 lan_broadcast_started:
   en: "[+] Minecraft LAN discovery started"
-  zh-CN: "[+] Minecraft 局域网发现已启动"
+  zh-CN: "[+] Minecraft 局域网游戏广播已启动"
 lan_broadcast_failed:
   en: "[-] Minecraft LAN discovery failed: %{err}"
-  zh-CN: "[-] Minecraft 局域网发现失败: %{err}"
+  zh-CN: "[-] Minecraft 局域网游戏广播启动失败：%{err}"
+
 address_copied:
   en: "[+] Minecraft address copied"
-  zh-CN: "[+] Minecraft 地址已复制"
+  zh-CN: "[+] Minecraft 连接地址已复制"
 join_failed:
   en: "[-] Join failed: %{err}"
-  zh-CN: "[-] 加入失败: %{err}"
+  zh-CN: "[-] 加入房间失败：%{err}"
+
 tunnel_closed:
   en: "[*] Tunnel closed"
-  zh-CN: "[*] 隧道已关闭"
+  zh-CN: "[*] 连接已关闭"
 stop_failed:
   en: "[-] Stop failed: %{err}"
-  zh-CN: "[-] 关闭失败: %{err}"
+  zh-CN: "[-] 停止连接失败：%{err}"
+
 relay_saved:
   en: "[+] Relay settings saved"
   zh-CN: "[+] 中继设置已保存"
+
 player_joined:
   en: "[+] Player joined: %{id}"
-  zh-CN: "[+] 玩家加入: %{id}"
+  zh-CN: "[+] 玩家已加入：%{id}"
 player_left:
   en: "[-] Player left: %{id} (%{reason})"
-  zh-CN: "[-] 玩家离开: %{id} (%{reason})"
+  zh-CN: "[-] 玩家已离开：%{id}（%{reason}）"
+
 connected_host:
   en: "[+] Connected to host"
-  zh-CN: "[+] 已连接到主机"
+  zh-CN: "[+] 已连接到房间主机"
 disconnected:
   en: "[-] Disconnected: %{reason}"
-  zh-CN: "[-] 已断开: %{reason}"
+  zh-CN: "[-] 连接已断开：%{reason}"
+
 path_changed:
   en: "[*] %{id}: %{route}, %{rtt}ms"
-  zh-CN: "[*] %{id}: %{route}, %{rtt}ms"
+  zh-CN: "[*] %{id}：%{route}，延迟 %{rtt} ms"
+
 reconnecting:
   en: "[*] Reconnecting (attempt %{n})..."
-  zh-CN: "[*] 正在重连 (第 %{n} 次)..."
+  zh-CN: "[*] 正在尝试重连（第 %{n} 次）..."
 reconnected:
   en: "[+] Reconnected"
-  zh-CN: "[+] 已重连"
+  zh-CN: "[+] 已重新连接"
+
 token_rotated:
   en: "[*] Host access token rotated"
-  zh-CN: "[*] 房间访问令牌已轮换"
+  zh-CN: "[*] 房间访问令牌已更新"
 token_rotation_failed:
   en: "[-] Share URI refresh failed; retrying in %{secs}s"
-  zh-CN: "[-] 分享链接刷新失败；将在 %{secs} 秒后重试"
+  zh-CN: "[-] 分享链接刷新失败，将在 %{secs} 秒后重试"
+
 auth_failed:
   en: "[-] Auth failed: %{id}"
-  zh-CN: "[-] 认证失败: %{id}"
+  zh-CN: "[-] 身份验证失败：%{id}"
 rejected:
   en: "[-] Rejected: %{id} (%{reason})"
-  zh-CN: "[-] 已拒绝: %{id} (%{reason})"
+  zh-CN: "[-] 连接被拒绝：%{id}（%{reason}）"
 error_msg:
   en: "[-] Error: %{msg}"
-  zh-CN: "[-] 错误: %{msg}"
+  zh-CN: "[-] 发生错误：%{msg}"
