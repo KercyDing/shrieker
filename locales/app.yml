@@ -17,9 +17,6 @@ idle:
 mc_port:
   en: MC Port
   zh-CN: MC 端口
-password:
-  en: Password
-  zh-CN: 密码
 max_players:
   en: Max Players
   zh-CN: 最大玩家
@@ -29,9 +26,9 @@ stop:
 start_host:
   en: Start Host
   zh-CN: 开始建房
-ticket:
-  en: Ticket
-  zh-CN: 票据
+share_uri:
+  en: Share URI
+  zh-CN: 分享 URI
 copy_clipboard:
   en: Copy to Clipboard
   zh-CN: 复制到剪贴板
@@ -98,18 +95,21 @@ starting_tunnel:
 joining_tunnel:
   en: "[*] Joining tunnel..."
   zh-CN: "[*] 正在加入隧道..."
-ticket_copied:
-  en: "[+] Ticket copied to clipboard"
-  zh-CN: "[+] 票据已复制到剪贴板"
+share_uri_copied:
+  en: "[+] Share URI copied to clipboard"
+  zh-CN: "[+] 分享 URI 已复制到剪贴板"
+share_uri_failed:
+  en: "[-] Export share URI: %{err}"
+  zh-CN: "[-] 导出分享 URI 失败: %{err}"
 host_ready:
   en: "[+] Host ready"
   zh-CN: "[+] 建房就绪"
 host_failed:
   en: "[-] Host failed: %{err}"
   zh-CN: "[-] 建房失败: %{err}"
-invalid_ticket:
-  en: "[-] Invalid ticket: %{err}"
-  zh-CN: "[-] 无效票据: %{err}"
+invalid_share_uri:
+  en: "[-] Invalid share URI: %{err}"
+  zh-CN: "[-] 无效分享 URI: %{err}"
 joined:
   en: "[+] Joined!"
   zh-CN: "[+] 已加入!"

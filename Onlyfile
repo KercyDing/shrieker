@@ -4,6 +4,10 @@ check():
     cargo check --all-targets
     cargo clippy --all-targets -- -D warnings
 
+# Run all checks and tests
+ci() & check:
+    cargo test
+
 # Build in release mode
 build():
     cargo build --release

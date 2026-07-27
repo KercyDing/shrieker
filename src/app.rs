@@ -3,9 +3,10 @@ use crate::ui;
 use eframe::egui;
 use sculk::persist::Profile;
 use sculk::tunnel::{
-    HostConfig, HostOptions, JoinConfig, JoinOptions, SecretKey, Ticket, TunnelEvent, TunnelMode,
+    HostConfig, HostOptions, JoinOptions, JoinUri, LocalPort, SecretKey, TunnelEvent, TunnelMode,
     TunnelPhase, TunnelService, TunnelStatus, TunnelUpdate,
 };
+use std::num::NonZeroU16;
 use tokio::sync::mpsc;
 
 const UPDATES_PER_FRAME_MAX: usize = 256;
@@ -27,11 +28,10 @@ pub struct App {
     stop_pending: bool,
     pub(crate) mode: Mode,
     pub(crate) host_port: String,
-    pub(crate) password: String,
     pub(crate) max_players: String,
-    pub(crate) ticket_input: String,
+    pub(crate) join_uri_input: String,
     pub(crate) join_port: String,
-    pub(crate) join_password: String,
+    pub(crate) share_uri: Option<String>,
     pub(crate) logs: Vec<String>,
     pub(crate) profile: Profile,
     pub(crate) secret_key: Option<SecretKey>,
@@ -66,11 +66,10 @@ impl App {
             stop_pending: false,
             mode: Mode::Host,
             host_port: loaded.profile.host.port.to_string(),
-            password: String::new(),
             max_players: String::new(),
-            ticket_input: loaded.profile.join.last_ticket.clone().unwrap_or_default(),
+            join_uri_input: String::new(),
             join_port: loaded.profile.join.port.to_string(),
-            join_password: String::new(),
+            share_uri: None,
             relay_custom: loaded.profile.relay.custom,
             relay_url: loaded.profile.relay.url.clone().unwrap_or_default(),
             profile: loaded.profile,
@@ -89,16 +88,13 @@ impl App {
         self.stop_pending
     }
 
-    /// 将界面字段同步到 profile 并保存。
+    /// Saves non-secret user settings.
     pub(crate) fn save_profile(&mut self) {
         if let Ok(port) = self.host_port.parse() {
             self.profile.host.port = port;
         }
         if let Ok(port) = self.join_port.parse() {
             self.profile.join.port = port;
-        }
-        if !self.ticket_input.is_empty() {
-            self.profile.join.last_ticket = Some(self.ticket_input.clone());
         }
         self.profile.relay.custom = self.relay_custom;
         self.profile.relay.url = (!self.relay_url.is_empty()).then(|| self.relay_url.clone());
@@ -130,9 +126,7 @@ impl App {
                 return;
             }
         };
-        let config = HostConfig::default()
-            .password(non_empty(&self.password))
-            .max_players(max_players);
+        let config = HostConfig::new().max_players(max_players);
         let options = HostOptions::new(port)
             .secret_key(self.secret_key.clone())
             .relay_url(relay_url)
@@ -147,23 +141,22 @@ impl App {
     }
 
     pub(crate) fn start_join(&mut self) {
-        let ticket = match self.ticket_input.trim().parse::<Ticket>() {
-            Ok(ticket) => ticket,
+        let join_uri = match self.join_uri_input.trim().parse::<JoinUri>() {
+            Ok(join_uri) => join_uri,
             Err(error) => {
                 self.logs
-                    .push(t!("invalid_ticket", err = error).to_string());
+                    .push(t!("invalid_share_uri", err = error).to_string());
                 return;
             }
         };
-        let port = match self.join_port.parse::<u16>() {
+        let local_port = match parse_local_port(&self.join_port) {
             Ok(port) => port,
             Err(error) => {
                 self.logs.push(t!("join_failed", err = error).to_string());
                 return;
             }
         };
-        let config = JoinConfig::default().password(non_empty(&self.join_password));
-        let options = JoinOptions::new(ticket, port).config(config);
+        let options = JoinOptions::new(join_uri).local_port(local_port);
 
         self.save_profile();
         self.logs.push(t!("joining_tunnel").to_string());
@@ -215,15 +208,26 @@ impl App {
     fn apply_status(&mut self, status: TunnelStatus) {
         let previous = self.tunnel.state.clone();
         let current = &status.state;
+        if current.phase != TunnelPhase::Active || current.mode != Some(TunnelMode::Host) {
+            self.share_uri = None;
+        }
 
         if previous.phase != TunnelPhase::Active && current.phase == TunnelPhase::Active {
             match current.mode {
                 Some(TunnelMode::Host) => {
                     self.logs.push(t!("host_ready").to_string());
-                    if let Some(ticket) = &current.ticket
-                        && sculk::clipboard::clipboard_copy(&ticket.to_string())
-                    {
-                        self.logs.push(t!("ticket_copied").to_string());
+                    match current.join_uri.as_ref().map(JoinUri::expose_secret_uri) {
+                        Some(Ok(uri)) => {
+                            self.repaint.copy_text(uri.clone());
+                            self.share_uri = Some(uri);
+                            self.logs.push(t!("share_uri_copied").to_string());
+                        }
+                        Some(Err(error)) => self
+                            .logs
+                            .push(t!("share_uri_failed", err = error).to_string()),
+                        None => self
+                            .logs
+                            .push(t!("share_uri_failed", err = "missing Join URI").to_string()),
                     }
                 }
                 Some(TunnelMode::Join) => self.logs.push(t!("joined").to_string()),
@@ -285,8 +289,8 @@ fn spawn_subscription(
     rx
 }
 
-fn non_empty(value: &str) -> Option<String> {
-    (!value.is_empty()).then(|| value.to_owned())
+fn parse_local_port(value: &str) -> Result<LocalPort, std::num::ParseIntError> {
+    value.parse::<NonZeroU16>().map(LocalPort::Fixed)
 }
 
 fn parse_optional_u32(value: &str) -> Result<Option<u32>, std::num::ParseIntError> {
@@ -324,7 +328,7 @@ fn format_event(event: &TunnelEvent) -> String {
         TunnelEvent::PlayerRejected { id, reason } => {
             t!("rejected", id = id, reason = reason).to_string()
         }
-        TunnelEvent::Error { message } => t!("error_msg", msg = message).to_string(),
+        TunnelEvent::Error { message, .. } => t!("error_msg", msg = message).to_string(),
         other => format!("[?] {other:?}"),
     }
 }
@@ -360,5 +364,18 @@ mod tests {
     #[test]
     fn rejects_invalid_optional_number() {
         assert!(parse_optional_u32("eight").is_err());
+    }
+
+    #[test]
+    fn parses_non_zero_local_port() {
+        assert!(matches!(
+            parse_local_port("30000"),
+            Ok(LocalPort::Fixed(port)) if port.get() == 30000
+        ));
+    }
+
+    #[test]
+    fn rejects_zero_local_port() {
+        assert!(parse_local_port("0").is_err());
     }
 }

@@ -96,13 +96,6 @@ fn render_host(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
             ui.label(t!("mc_port").as_ref());
             ui.add(egui::TextEdit::singleline(&mut app.host_port).desired_width(120.0));
             ui.end_row();
-            ui.label(t!("password").as_ref());
-            ui.add(
-                egui::TextEdit::singleline(&mut app.password)
-                    .password(true)
-                    .desired_width(120.0),
-            );
-            ui.end_row();
             ui.label(t!("max_players").as_ref());
             ui.add(egui::TextEdit::singleline(&mut app.max_players).desired_width(120.0));
             ui.end_row();
@@ -117,19 +110,18 @@ fn render_host(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
         app.stop();
     }
 
-    let ticket = app.tunnel.state.ticket.as_ref().map(ToString::to_string);
-    if let Some(ticket) = ticket {
+    if let Some(share_uri) = app.share_uri.clone() {
         ui.add_space(6.0);
-        ui.label(egui::RichText::new(t!("ticket").as_ref()).strong());
-        let mut display = ticket.clone();
+        ui.label(egui::RichText::new(t!("share_uri").as_ref()).strong());
+        let mut display = share_uri.clone();
         ui.add(
             egui::TextEdit::singleline(&mut display)
                 .font(egui::TextStyle::Monospace)
                 .desired_width(f32::INFINITY),
         );
         if ui.button(t!("copy_clipboard").as_ref()).clicked() {
-            ctx.copy_text(ticket);
-            app.logs.push(t!("ticket_copied").to_string());
+            ctx.copy_text(share_uri);
+            app.logs.push(t!("share_uri_copied").to_string());
         }
     }
 }
@@ -139,22 +131,15 @@ fn render_join(app: &mut App, ui: &mut egui::Ui) {
         .num_columns(2)
         .spacing([12.0, 6.0])
         .show(ui, |ui| {
-            ui.label(t!("ticket").as_ref());
+            ui.label(t!("share_uri").as_ref());
             ui.add(
-                egui::TextEdit::singleline(&mut app.ticket_input)
+                egui::TextEdit::singleline(&mut app.join_uri_input)
                     .font(egui::TextStyle::Monospace)
                     .desired_width(f32::INFINITY),
             );
             ui.end_row();
             ui.label(t!("local_port").as_ref());
             ui.add(egui::TextEdit::singleline(&mut app.join_port).desired_width(120.0));
-            ui.end_row();
-            ui.label(t!("password").as_ref());
-            ui.add(
-                egui::TextEdit::singleline(&mut app.join_password)
-                    .password(true)
-                    .desired_width(120.0),
-            );
             ui.end_row();
         });
 
