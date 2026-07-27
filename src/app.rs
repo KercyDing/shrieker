@@ -1,3 +1,4 @@
+use crate::lan::LanBroadcaster;
 use crate::settings;
 use crate::ui;
 use eframe::egui;
@@ -64,6 +65,7 @@ pub struct App {
     host_tx: Option<mpsc::UnboundedSender<HostCommand>>,
     host_rx: mpsc::UnboundedReceiver<HostUpdate>,
     host_update_tx: mpsc::UnboundedSender<HostUpdate>,
+    lan_broadcaster: Option<LanBroadcaster>,
     stop_pending: bool,
     rotate_pending: bool,
     phase: TunnelPhase,
@@ -112,6 +114,7 @@ impl App {
             host_tx: None,
             host_rx,
             host_update_tx,
+            lan_broadcaster: None,
             stop_pending: false,
             rotate_pending: false,
             phase: TunnelPhase::Idle,
@@ -301,6 +304,7 @@ impl App {
             return;
         }
 
+        self.stop_lan_broadcast();
         let service = self.join_service.clone();
         let tx = self.join_stop_tx.clone();
         let repaint = self.repaint.clone();
@@ -324,20 +328,45 @@ impl App {
             };
             self.apply_host_update(update);
         }
-        if let Ok(result) = self.join_stop_rx.try_recv() {
+        if let Ok(Err(error)) = self.join_stop_rx.try_recv() {
             self.stop_pending = false;
-            if let Err(error) = result {
-                self.logs.push(t!("stop_failed", err = error).to_string());
+            self.logs.push(t!("stop_failed", err = error).to_string());
+            let status = self.join_service.status();
+            if self.active_mode == Some(Mode::Join)
+                && status.state.phase == TunnelPhase::Active
+                && let Some(addr) = status.state.local_addr
+            {
+                self.start_lan_broadcast(addr.port());
             }
         }
+        self.poll_lan_broadcast();
     }
 
     fn apply_join_update(&mut self, update: TunnelUpdate) {
         match update {
             TunnelUpdate::Status(status) => self.apply_join_status(status),
-            TunnelUpdate::Event(event) => self.logs.push(format_event(&event)),
+            TunnelUpdate::Event(event) => self.apply_join_event(event),
             _ => {}
         }
+    }
+
+    fn apply_join_event(&mut self, event: TunnelEvent) {
+        if self.active_mode == Some(Mode::Join) {
+            match &event {
+                TunnelEvent::Disconnected { .. } | TunnelEvent::Reconnecting { .. } => {
+                    self.stop_lan_broadcast();
+                }
+                TunnelEvent::Reconnected
+                    if self.phase == TunnelPhase::Active && !self.stop_pending =>
+                {
+                    if let Some(addr) = self.tunnel.state.local_addr {
+                        self.start_lan_broadcast(addr.port());
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.logs.push(format_event(&event));
     }
 
     fn apply_join_status(&mut self, status: TunnelStatus) {
@@ -350,16 +379,61 @@ impl App {
         self.phase = status.state.phase;
         if previous != TunnelPhase::Active && self.phase == TunnelPhase::Active {
             if let Some(addr) = status.state.local_addr {
+                if !self.stop_pending {
+                    self.start_lan_broadcast(addr.port());
+                }
                 self.logs.push(t!("joined_at", addr = addr).to_string());
             } else {
                 self.logs.push(t!("joined").to_string());
             }
-        } else if previous == TunnelPhase::Stopping && self.phase == TunnelPhase::Idle {
-            self.finish_stopped();
-        } else if previous == TunnelPhase::Starting && self.phase == TunnelPhase::Idle {
-            self.active_mode = None;
+        } else if previous != TunnelPhase::Idle && self.phase == TunnelPhase::Idle {
+            if previous == TunnelPhase::Starting && !self.stop_pending {
+                self.stop_lan_broadcast();
+                self.active_mode = None;
+            } else {
+                self.finish_stopped();
+            }
         }
         self.tunnel = status;
+    }
+
+    fn start_lan_broadcast(&mut self, port: u16) {
+        self.stop_lan_broadcast();
+        let Some(port) = NonZeroU16::new(port) else {
+            self.logs
+                .push(t!("lan_broadcast_failed", err = "local port is zero").to_string());
+            return;
+        };
+        match LanBroadcaster::start("shrieker", port) {
+            Ok(broadcaster) => {
+                self.lan_broadcaster = Some(broadcaster);
+                self.logs.push(t!("lan_broadcast_started").to_string());
+            }
+            Err(error) => self
+                .logs
+                .push(t!("lan_broadcast_failed", err = error).to_string()),
+        }
+    }
+
+    fn stop_lan_broadcast(&mut self) {
+        let Some(broadcaster) = self.lan_broadcaster.take() else {
+            return;
+        };
+        if let Err(error) = broadcaster.stop() {
+            self.logs
+                .push(t!("lan_broadcast_failed", err = error).to_string());
+        }
+    }
+
+    fn poll_lan_broadcast(&mut self) {
+        if !self
+            .lan_broadcaster
+            .as_ref()
+            .is_some_and(LanBroadcaster::is_finished)
+        {
+            return;
+        }
+        self.stop_lan_broadcast();
     }
 
     fn apply_host_update(&mut self, update: HostUpdate) {
@@ -408,6 +482,7 @@ impl App {
     }
 
     fn finish_stopped(&mut self) {
+        self.stop_lan_broadcast();
         self.logs.push(t!("tunnel_closed").to_string());
         self.stop_pending = false;
         self.phase = TunnelPhase::Idle;
@@ -456,6 +531,7 @@ impl App {
     }
 
     fn shutdown_on_exit(&mut self) {
+        self.stop_lan_broadcast();
         if let Some(host_tx) = self.host_tx.take() {
             let (done_tx, done_rx) = std_mpsc::channel();
             if host_tx

@@ -4,6 +4,7 @@
 extern crate rust_i18n;
 
 mod app;
+mod lan;
 mod settings;
 mod ui;
 

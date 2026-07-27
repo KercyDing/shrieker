@@ -171,8 +171,14 @@ joined:
   en: "[+] Joined!"
   zh-CN: "[+] 已加入!"
 joined_at:
-  en: "[+] Joined! Connect Minecraft to %{addr}"
-  zh-CN: "[+] 已加入！请在 Minecraft 中连接 %{addr}"
+  en: "[+] Joined! Published to the LAN list; manual address: %{addr}"
+  zh-CN: "[+] 已加入！已发布到局域网列表；手动地址: %{addr}"
+lan_broadcast_started:
+  en: "[+] Minecraft LAN discovery started"
+  zh-CN: "[+] Minecraft 局域网发现已启动"
+lan_broadcast_failed:
+  en: "[-] Minecraft LAN discovery failed: %{err}"
+  zh-CN: "[-] Minecraft 局域网发现失败: %{err}"
 address_copied:
   en: "[+] Minecraft address copied"
   zh-CN: "[+] Minecraft 地址已复制"
