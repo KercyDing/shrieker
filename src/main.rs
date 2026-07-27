@@ -10,8 +10,26 @@ mod ui;
 i18n!("locales", fallback = "en");
 
 use eframe::egui;
+use std::path::PathBuf;
 
 const UI_FONT_SIZE: f32 = 14.0;
+#[cfg(all(unix, not(target_os = "macos")))]
+const NOTO_CJK_SC_FACE_INDEX: u32 = 2;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FontCandidate {
+    path: PathBuf,
+    face_index: u32,
+}
+
+impl FontCandidate {
+    fn new(path: impl Into<PathBuf>, face_index: u32) -> Self {
+        Self {
+            path: path.into(),
+            face_index,
+        }
+    }
+}
 
 fn load_icon() -> egui::IconData {
     let bytes = include_bytes!("../assets/icon.png");
@@ -73,21 +91,23 @@ fn setup_ui_style(ctx: &egui::Context) {
     });
 }
 
-fn load_font(paths: Vec<std::path::PathBuf>) -> Option<egui::FontData> {
-    for path in paths {
-        let Ok(data) = std::fs::read(path) else {
+fn load_font(candidates: Vec<FontCandidate>) -> Option<egui::FontData> {
+    for candidate in candidates {
+        let Ok(data) = std::fs::read(&candidate.path) else {
             continue;
         };
-        return Some(egui::FontData::from_owned(data));
+        let mut font = egui::FontData::from_owned(data);
+        font.index = candidate.face_index;
+        return Some(font);
     }
     None
 }
 
 #[cfg(target_os = "windows")]
-fn system_font_candidates() -> Vec<std::path::PathBuf> {
+fn system_font_candidates() -> Vec<FontCandidate> {
     let font_dir = std::env::var_os("WINDIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from("C:\\Windows"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("C:\\Windows"))
         .join("Fonts");
     [
         "msyh.ttc",
@@ -97,12 +117,12 @@ fn system_font_candidates() -> Vec<std::path::PathBuf> {
         "simsun.ttc",
     ]
     .into_iter()
-    .map(|file_name| font_dir.join(file_name))
+    .map(|file_name| FontCandidate::new(font_dir.join(file_name), 0))
     .collect()
 }
 
 #[cfg(target_os = "macos")]
-fn system_font_candidates() -> Vec<std::path::PathBuf> {
+fn system_font_candidates() -> Vec<FontCandidate> {
     path_candidates([
         "/System/Library/Fonts/PingFang.ttc",
         "/System/Library/Fonts/STHeiti Medium.ttc",
@@ -111,36 +131,52 @@ fn system_font_candidates() -> Vec<std::path::PathBuf> {
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-fn system_font_candidates() -> Vec<std::path::PathBuf> {
+fn system_font_candidates() -> Vec<FontCandidate> {
     let mut candidates = fontconfig_candidates(["sans:lang=zh-cn", "Noto Sans CJK SC"]);
-    candidates.extend(path_candidates([
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc",
-    ]));
+    candidates.extend([
+        FontCandidate::new(
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            NOTO_CJK_SC_FACE_INDEX,
+        ),
+        FontCandidate::new(
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            NOTO_CJK_SC_FACE_INDEX,
+        ),
+        FontCandidate::new(
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+            NOTO_CJK_SC_FACE_INDEX,
+        ),
+        FontCandidate::new(
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            NOTO_CJK_SC_FACE_INDEX,
+        ),
+        FontCandidate::new(
+            "/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc",
+            0,
+        ),
+    ]);
     candidates
 }
 
 #[cfg(not(any(unix, target_os = "windows")))]
-fn system_font_candidates() -> Vec<std::path::PathBuf> {
+fn system_font_candidates() -> Vec<FontCandidate> {
     Vec::new()
 }
 
-#[cfg(unix)]
-fn path_candidates(paths: impl IntoIterator<Item = &'static str>) -> Vec<std::path::PathBuf> {
-    paths.into_iter().map(std::path::PathBuf::from).collect()
+#[cfg(target_os = "macos")]
+fn path_candidates(paths: impl IntoIterator<Item = &'static str>) -> Vec<FontCandidate> {
+    paths
+        .into_iter()
+        .map(|path| FontCandidate::new(path, 0))
+        .collect()
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-fn fontconfig_candidates(
-    font_names: impl IntoIterator<Item = &'static str>,
-) -> Vec<std::path::PathBuf> {
+fn fontconfig_candidates(font_names: impl IntoIterator<Item = &'static str>) -> Vec<FontCandidate> {
     let mut candidates = Vec::new();
     for font_name in font_names {
         let Ok(output) = std::process::Command::new("fc-match")
-            .args(["-f", "%{file}", font_name])
+            .args(["-f", "%{file}\t%{index}", font_name])
             .output()
         else {
             continue;
@@ -148,13 +184,32 @@ fn fontconfig_candidates(
         if !output.status.success() {
             continue;
         }
-        let path = std::path::PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
-        if path.as_os_str().is_empty() || candidates.contains(&path) {
+        let Some(candidate) = parse_fontconfig_candidate(&output.stdout) else {
+            continue;
+        };
+        if candidates.iter().any(|existing: &FontCandidate| {
+            existing.path == candidate.path && existing.face_index == candidate.face_index
+        }) {
             continue;
         }
-        candidates.push(path);
+        candidates.push(candidate);
     }
     candidates
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn parse_fontconfig_candidate(output: &[u8]) -> Option<FontCandidate> {
+    let output = std::str::from_utf8(output).ok()?.trim_end();
+    let mut fields = output.split('\t');
+    let path = fields.next()?;
+    let face_index = fields.next()?.parse().ok()?;
+    if path.is_empty() || fields.next().is_some() {
+        return None;
+    }
+    Some(FontCandidate {
+        path: PathBuf::from(path),
+        face_index,
+    })
 }
 
 fn main() -> eframe::Result<()> {
@@ -184,4 +239,33 @@ fn main() -> eframe::Result<()> {
             Ok(Box::new(app))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(all(unix, not(target_os = "macos")))]
+    use super::{FontCandidate, parse_fontconfig_candidate};
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn parses_fontconfig_face_index() {
+        let parsed =
+            parse_fontconfig_candidate(b"/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc\t2");
+        assert_eq!(
+            parsed,
+            Some(FontCandidate {
+                path: "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc".into(),
+                face_index: 2,
+            })
+        );
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn rejects_invalid_fontconfig_output() {
+        assert!(parse_fontconfig_candidate(b"/font.ttc\tnot-a-number").is_none());
+        assert!(parse_fontconfig_candidate(b"/font.ttc").is_none());
+        assert!(parse_fontconfig_candidate(b"\t0").is_none());
+        assert!(parse_fontconfig_candidate(b"/font.ttc\t0\textra").is_none());
+    }
 }
