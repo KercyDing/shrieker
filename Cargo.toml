@@ -14,6 +14,7 @@ category = "public.app-category.utilities"
 icon = ["assets/icon.icns", "assets/icon.ico"]
 
 [package.metadata.deb]
+copyright = "Copyright © 2026 KercyDing"
 depends = "$auto"
 assets = [
     ["target/release/shrieker", "usr/bin/", "755"],
