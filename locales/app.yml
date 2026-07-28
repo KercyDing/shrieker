@@ -29,8 +29,8 @@ mc_server:
   en: Minecraft Server
   zh-CN: Minecraft 服务器
 mc_server_scanning:
-  en: Open your world to LAN
-  zh-CN: 请先将世界对局域网开放
+  en: Waiting for LAN world
+  zh-CN: 等候世界开放局域网
 mc_server_detected:
   en: "Detected on port %{port}"
   zh-CN: "已检测到，端口 %{port}"

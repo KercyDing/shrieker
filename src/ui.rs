@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime};
 
 const GREEN: egui::Color32 = egui::Color32::from_rgb(74, 222, 128);
 const BLUE: egui::Color32 = egui::Color32::from_rgb(125, 211, 252);
+const YELLOW: egui::Color32 = egui::Color32::from_rgb(250, 204, 21);
 const RED: egui::Color32 = egui::Color32::from_rgb(248, 113, 113);
 const DIM: egui::Color32 = egui::Color32::from_rgb(120, 120, 120);
 const HOST_FIELD_WIDTH: f32 = 130.0;
@@ -103,7 +104,7 @@ fn render_host(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
                         );
                     }
                     None => {
-                        ui.label(egui::RichText::new(t!("mc_server_scanning")).color(DIM));
+                        ui.label(egui::RichText::new(t!("mc_server_scanning")).color(YELLOW));
                     }
                 }
                 ui.end_row();
