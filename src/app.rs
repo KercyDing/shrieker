@@ -835,7 +835,7 @@ impl eframe::App for App {
         ui::render(self, root);
     }
 
-    fn on_exit(&mut self) {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.shutdown_on_exit();
     }
 }
