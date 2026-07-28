@@ -6,6 +6,7 @@ extern crate rust_i18n;
 mod app;
 mod settings;
 mod tray;
+mod tunnel;
 mod ui;
 
 i18n!("locales", fallback = "en");

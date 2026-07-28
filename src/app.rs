@@ -1,28 +1,21 @@
 use crate::settings;
+use crate::tunnel::{self, HostStart, HostTask, HostUpdate};
 use crate::ui;
 use eframe::egui;
-use sculk::ErrorCategory;
 use sculk::minecraft::lan::{LanBroadcaster, LanScanner};
-use sculk::minecraft::probe_server;
-use sculk::persist::{self, HostState, Profile, TokenRefreshSetting};
+use sculk::persist::{Profile, TokenRefreshSetting};
 use sculk::tunnel::{
-    ConnectionSnapshot, HostConfig, HostedServiceHandle, HostedServiceOptions, HostedServiceStatus,
-    JoinConfig, JoinOptions, JoinUri, LocalPort, NodeOptions, SculkNode, SecretKey, ServiceId,
-    TokenRefreshPolicy, TunnelEvent, TunnelPhase, TunnelService, TunnelStatus, TunnelUpdate,
+    ConnectionSnapshot, HostedServiceStatus, JoinConfig, JoinOptions, JoinUri, LocalPort,
+    SecretKey, TunnelEvent, TunnelPhase, TunnelService, TunnelStatus, TunnelUpdate,
 };
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::num::{NonZeroU16, NonZeroU32};
-use std::path::{Path, PathBuf};
 use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 
 const UPDATES_PER_FRAME_MAX: usize = 256;
 const EXIT_TIMEOUT: Duration = Duration::from_secs(5);
-const HOST_START_TIMEOUT: Duration = Duration::from_secs(15);
-const MC_PROBE_TIMEOUT: Duration = Duration::from_secs(1);
-const MC_HEALTH_INTERVAL: Duration = Duration::from_secs(5);
-const MC_HEALTH_FAILURES_MAX: u8 = 3;
 const TRAY_EVENTS_PER_FRAME_MAX: usize = 8;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -31,38 +24,6 @@ pub(crate) enum Mode {
     Join,
     Settings,
     Preferences,
-}
-
-enum HostCommand {
-    Rotate,
-    Stop { done: Option<std_mpsc::Sender<()>> },
-}
-
-enum HostUpdate {
-    Started {
-        uri: String,
-        status: HostedServiceStatus,
-    },
-    Status(HostedServiceStatus),
-    UriChanged {
-        uri: String,
-        status: HostedServiceStatus,
-    },
-    Event(TunnelEvent),
-    Error(String),
-    ScannerStopped(Result<(), String>),
-    MinecraftUnavailable,
-    Failed(String),
-    Stopped(Result<(), String>),
-}
-
-struct HostStart {
-    mc_port: u16,
-    max_players: Option<u32>,
-    secret_key: SecretKey,
-    relay_url: Option<sculk::tunnel::RelayUrl>,
-    token_refresh: TokenRefreshPolicy,
-    state_path: PathBuf,
 }
 
 pub struct App {
@@ -76,9 +37,11 @@ pub struct App {
     join_rx: mpsc::UnboundedReceiver<TunnelUpdate>,
     join_stop_tx: mpsc::UnboundedSender<Result<(), String>>,
     join_stop_rx: mpsc::UnboundedReceiver<Result<(), String>>,
-    host_tx: Option<mpsc::UnboundedSender<HostCommand>>,
+    host_task: Option<HostTask>,
     host_rx: mpsc::UnboundedReceiver<HostUpdate>,
     host_update_tx: mpsc::UnboundedSender<HostUpdate>,
+    host_scan_stop_tx: mpsc::UnboundedSender<Result<(), String>>,
+    host_scan_stop_rx: mpsc::UnboundedReceiver<Result<(), String>>,
     host_scanner: Option<LanScanner>,
     host_scanner_stopping: bool,
     lan_broadcaster: Option<LanBroadcaster>,
@@ -120,9 +83,10 @@ impl App {
 
         let join_service = TunnelService::new();
         let tunnel = join_service.status();
-        let join_rx = spawn_join_subscription(&rt, join_service.subscribe(), repaint.clone());
+        let join_rx = tunnel::subscribe_join(&rt, join_service.subscribe(), repaint.clone());
         let (join_stop_tx, join_stop_rx) = mpsc::unbounded_channel();
         let (host_update_tx, host_rx) = mpsc::unbounded_channel();
+        let (host_scan_stop_tx, host_scan_stop_rx) = mpsc::unbounded_channel();
 
         let mut logs = loaded.errors;
         if logs.is_empty() {
@@ -158,9 +122,11 @@ impl App {
             join_rx,
             join_stop_tx,
             join_stop_rx,
-            host_tx: None,
+            host_task: None,
             host_rx,
             host_update_tx,
+            host_scan_stop_tx,
+            host_scan_stop_rx,
             host_scanner,
             host_scanner_stopping: false,
             lan_broadcaster: None,
@@ -325,32 +291,29 @@ impl App {
             max_players,
             secret_key,
             relay_url,
-            token_refresh: token_refresh_policy(self.token_refresh),
+            token_refresh: tunnel::token_refresh_policy(self.token_refresh),
             state_path,
         };
-        let (host_tx, host_rx) = mpsc::unbounded_channel();
-        self.host_tx = Some(host_tx);
+        self.host_task = Some(HostTask::spawn(
+            &self.rt,
+            start,
+            self.host_update_tx.clone(),
+            self.repaint.clone(),
+        ));
         self.stop_host_scan();
         self.phase = TunnelPhase::Starting;
         self.active_mode = Some(Mode::Host);
         self.logs.push(t!("starting_tunnel").to_string());
-
-        let update_tx = self.host_update_tx.clone();
-        let repaint = self.repaint.clone();
-        self.rt.spawn(async move {
-            run_host(start, host_rx, update_tx).await;
-            repaint.request_repaint();
-        });
     }
 
     pub(crate) fn rotate_host_uri(&mut self) {
         if self.rotate_pending || self.phase != TunnelPhase::Active {
             return;
         }
-        let Some(host_tx) = &self.host_tx else {
+        let Some(host_task) = &self.host_task else {
             return;
         };
-        if host_tx.send(HostCommand::Rotate).is_ok() {
+        if host_task.rotate() {
             self.rotate_pending = true;
             self.logs.push(t!("refreshing_share_uri").to_string());
         }
@@ -393,10 +356,7 @@ impl App {
         self.stop_pending = true;
 
         if self.active_mode == Some(Mode::Host) {
-            let sent = self
-                .host_tx
-                .as_ref()
-                .is_some_and(|tx| tx.send(HostCommand::Stop { done: None }).is_ok());
+            let sent = self.host_task.as_ref().is_some_and(|task| task.stop(None));
             if !sent {
                 self.stop_pending = false;
                 self.logs
@@ -429,6 +389,14 @@ impl App {
                 break;
             };
             self.apply_host_update(update);
+        }
+        if let Ok(result) = self.host_scan_stop_rx.try_recv() {
+            self.host_scanner_stopping = false;
+            if let Err(error) = result {
+                self.logs
+                    .push(t!("lan_scan_failed", err = error).to_string());
+            }
+            self.start_host_scan();
         }
         if let Ok(Err(error)) = self.join_stop_rx.try_recv() {
             self.stop_pending = false;
@@ -468,7 +436,7 @@ impl App {
                 _ => {}
             }
         }
-        self.logs.push(format_event(&event));
+        self.logs.push(tunnel::format_event(&event));
     }
 
     fn apply_join_status(&mut self, status: TunnelStatus) {
@@ -562,11 +530,11 @@ impl App {
             return;
         };
         self.host_scanner_stopping = true;
-        let updates = self.host_update_tx.clone();
+        let stop_tx = self.host_scan_stop_tx.clone();
         let repaint = self.repaint.clone();
         self.rt.spawn_blocking(move || {
             let result = scanner.stop().map_err(|error| error.to_string());
-            let _ = updates.send(HostUpdate::ScannerStopped(result));
+            let _ = stop_tx.send(result);
             repaint.request_repaint();
         });
     }
@@ -617,18 +585,10 @@ impl App {
                 self.host_status = Some(status);
                 self.set_share_uri(uri, true);
             }
-            HostUpdate::Event(event) => self.logs.push(format_event(&event)),
+            HostUpdate::Event(event) => self.logs.push(tunnel::format_event(&event)),
             HostUpdate::Error(error) => {
                 self.rotate_pending = false;
                 self.logs.push(t!("error_msg", msg = error).to_string());
-            }
-            HostUpdate::ScannerStopped(result) => {
-                self.host_scanner_stopping = false;
-                if let Err(error) = result {
-                    self.logs
-                        .push(t!("lan_scan_failed", err = error).to_string());
-                }
-                self.start_host_scan();
             }
             HostUpdate::MinecraftUnavailable => {
                 self.detected_mc_port = None;
@@ -674,7 +634,7 @@ impl App {
         self.rotate_pending = false;
         self.phase = TunnelPhase::Idle;
         self.active_mode = None;
-        self.host_tx = None;
+        self.host_task = None;
         self.host_status = None;
         self.share_uri = None;
         self.start_host_scan();
@@ -752,14 +712,9 @@ impl App {
     fn shutdown_on_exit(&mut self) {
         self.stop_host_scan();
         self.stop_lan_broadcast();
-        if let Some(host_tx) = self.host_tx.take() {
+        if let Some(host_task) = self.host_task.take() {
             let (done_tx, done_rx) = std_mpsc::channel();
-            if host_tx
-                .send(HostCommand::Stop {
-                    done: Some(done_tx),
-                })
-                .is_ok()
-            {
+            if host_task.stop(Some(done_tx)) {
                 let _ = done_rx.recv_timeout(EXIT_TIMEOUT);
             }
         }
@@ -816,275 +771,6 @@ impl App {
     }
 }
 
-async fn run_host(
-    start: HostStart,
-    mut commands: mpsc::UnboundedReceiver<HostCommand>,
-    updates: mpsc::UnboundedSender<HostUpdate>,
-) {
-    let target_addr = SocketAddr::from((Ipv4Addr::LOCALHOST, start.mc_port));
-    if !minecraft_available(target_addr).await {
-        let _ = updates.send(HostUpdate::MinecraftUnavailable);
-        return;
-    }
-    let saved = match persist::load_host_state(&start.state_path) {
-        Ok(saved) => saved,
-        Err(error) => {
-            let _ = updates.send(HostUpdate::Failed(error.to_string()));
-            return;
-        }
-    };
-    let service_id = saved
-        .as_ref()
-        .map_or_else(ServiceId::generate, |state| state.service_id);
-    let token_state = saved.map(|state| state.token_state);
-    let node_options = NodeOptions {
-        secret_key: Some(start.secret_key),
-        relay_url: start.relay_url,
-        ..NodeOptions::default()
-    };
-    let node = match tokio::time::timeout(HOST_START_TIMEOUT, SculkNode::bind(node_options)).await {
-        Ok(Ok(node)) => node,
-        Ok(Err(error)) => {
-            let _ = updates.send(HostUpdate::Failed(error.to_string()));
-            return;
-        }
-        Err(_) => {
-            let _ = updates.send(HostUpdate::Failed(
-                "node startup timed out; check relay settings".to_owned(),
-            ));
-            return;
-        }
-    };
-    let host = match node
-        .start_service(HostedServiceOptions {
-            service_id,
-            target_addr,
-            token_state,
-            token_refresh: start.token_refresh,
-            config: HostConfig::new().max_players(start.max_players),
-        })
-        .await
-    {
-        Ok(host) => host,
-        Err(error) => {
-            node.close().await;
-            let _ = updates.send(HostUpdate::Failed(error.to_string()));
-            return;
-        }
-    };
-    let mut events = match host.subscribe().await {
-        Ok(events) => events,
-        Err(error) => {
-            node.close().await;
-            let _ = updates.send(HostUpdate::Failed(error.to_string()));
-            return;
-        }
-    };
-    let mut statuses = match host.subscribe_status().await {
-        Ok(statuses) => statuses,
-        Err(error) => {
-            node.close().await;
-            let _ = updates.send(HostUpdate::Failed(error.to_string()));
-            return;
-        }
-    };
-    if let Err(error) = persist_host_state(&start.state_path, &host).await {
-        node.close().await;
-        let _ = updates.send(HostUpdate::Failed(error));
-        return;
-    }
-    let status = match host.status().await {
-        Ok(status) => status,
-        Err(error) => {
-            node.close().await;
-            let _ = updates.send(HostUpdate::Failed(error.to_string()));
-            return;
-        }
-    };
-    let uri = match expose_host_uri(&host).await {
-        Ok(uri) => uri,
-        Err(error) => {
-            node.close().await;
-            let _ = updates.send(HostUpdate::Failed(error));
-            return;
-        }
-    };
-    let mut uri_generation = status.uri_generation;
-    if updates.send(HostUpdate::Started { uri, status }).is_err() {
-        node.close().await;
-        return;
-    }
-
-    let first_health_check = tokio::time::Instant::now() + MC_HEALTH_INTERVAL;
-    let mut health_checks = tokio::time::interval_at(first_health_check, MC_HEALTH_INTERVAL);
-    health_checks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut health_failures = 0_u8;
-    let mut pending_target_error = None;
-    loop {
-        tokio::select! {
-            command = commands.recv() => {
-                match command {
-                    Some(HostCommand::Rotate) => {
-                        if let Err(error) = host.rotate_token().await {
-                            let _ = updates.send(HostUpdate::Error(error.to_string()));
-                        }
-                    }
-                    Some(HostCommand::Stop { done }) => {
-                        let result = host.stop().await.map_err(|error| error.to_string());
-                        node.close().await;
-                        let _ = updates.send(HostUpdate::Stopped(result));
-                        if let Some(done) = done {
-                            let _ = done.send(());
-                        }
-                        return;
-                    }
-                    None => {
-                        node.close().await;
-                        return;
-                    }
-                }
-            }
-            event = events.recv() => {
-                match event {
-                    Ok(event) => {
-                        if is_target_unavailable_event(&event) {
-                            pending_target_error.get_or_insert(event);
-                        } else {
-                            let _ = updates.send(HostUpdate::Event(event));
-                        }
-                    }
-                    Err(broadcast::error::RecvError::Lagged(count)) => {
-                        let _ = updates.send(HostUpdate::Error(
-                            format!("missed {count} host events")
-                        ));
-                    }
-                    Err(broadcast::error::RecvError::Closed) => {
-                        node.close().await;
-                        let _ = updates.send(HostUpdate::Failed(
-                            "host event channel closed unexpectedly".to_owned()
-                        ));
-                        return;
-                    }
-                }
-            }
-            status = statuses.recv() => {
-                let Some(status) = status else {
-                    node.close().await;
-                    let _ = updates.send(HostUpdate::Failed(
-                        "host status channel closed unexpectedly".to_owned()
-                    ));
-                    return;
-                };
-                if status.uri_generation > uri_generation {
-                    uri_generation = status.uri_generation;
-                    if let Err(error) = persist_host_state(&start.state_path, &host).await {
-                        node.close().await;
-                        let _ = updates.send(HostUpdate::Failed(error));
-                        return;
-                    }
-                    match expose_host_uri(&host).await {
-                        Ok(uri) => {
-                            let _ = updates.send(HostUpdate::UriChanged { uri, status });
-                        }
-                        Err(error) => {
-                            node.close().await;
-                            let _ = updates.send(HostUpdate::Failed(error));
-                            return;
-                        }
-                    }
-                } else {
-                    let _ = updates.send(HostUpdate::Status(status));
-                }
-            }
-            _ = health_checks.tick() => {
-                let available = minecraft_available(target_addr).await;
-                if available
-                    && let Some(event) = pending_target_error.take()
-                {
-                    let _ = updates.send(HostUpdate::Event(event));
-                }
-                if !record_health_check(&mut health_failures, available) {
-                    continue;
-                }
-
-                let stop_result = host.stop().await.map_err(|error| error.to_string());
-                node.close().await;
-                let update = match stop_result {
-                    Ok(()) => HostUpdate::MinecraftUnavailable,
-                    Err(error) => HostUpdate::Failed(error),
-                };
-                let _ = updates.send(update);
-                return;
-            }
-        }
-    }
-}
-
-async fn minecraft_available(addr: SocketAddr) -> bool {
-    tokio::task::spawn_blocking(move || probe_server(addr, MC_PROBE_TIMEOUT))
-        .await
-        .is_ok_and(|result| result.is_ok())
-}
-
-fn record_health_check(failures: &mut u8, available: bool) -> bool {
-    if available {
-        *failures = 0;
-        return false;
-    }
-    *failures = failures.saturating_add(1);
-    *failures >= MC_HEALTH_FAILURES_MAX
-}
-
-fn is_target_unavailable_event(event: &TunnelEvent) -> bool {
-    matches!(
-        event,
-        TunnelEvent::Error {
-            category: ErrorCategory::TargetUnavailable,
-            ..
-        }
-    )
-}
-
-async fn persist_host_state(path: &Path, host: &HostedServiceHandle) -> Result<(), String> {
-    let token_state = host
-        .token_state()
-        .await
-        .map_err(|error| error.to_string())?;
-    persist::save_host_state(
-        path,
-        &HostState {
-            service_id: host.service_id(),
-            token_state,
-        },
-    )
-    .map_err(|error| error.to_string())
-}
-
-async fn expose_host_uri(host: &HostedServiceHandle) -> Result<String, String> {
-    host.join_uri()
-        .await
-        .map_err(|error| error.to_string())?
-        .expose_secret_uri()
-        .map_err(|error| error.to_string())
-}
-
-fn spawn_join_subscription(
-    rt: &tokio::runtime::Runtime,
-    mut subscription: sculk::tunnel::TunnelSubscription,
-    repaint: egui::Context,
-) -> mpsc::UnboundedReceiver<TunnelUpdate> {
-    let (tx, rx) = mpsc::unbounded_channel();
-    rt.spawn(async move {
-        while let Some(update) = subscription.recv().await {
-            if tx.send(update).is_err() {
-                break;
-            }
-            repaint.request_repaint();
-        }
-    });
-    rx
-}
-
 fn parse_local_port(auto: bool, value: &str) -> Result<LocalPort, std::num::ParseIntError> {
     if auto {
         Ok(LocalPort::Auto)
@@ -1102,62 +788,6 @@ fn parse_optional_u32(value: &str) -> Result<Option<u32>, std::num::ParseIntErro
         Ok(None)
     } else {
         value.parse::<NonZeroU32>().map(|value| Some(value.get()))
-    }
-}
-
-pub(crate) fn token_refresh_policy(setting: TokenRefreshSetting) -> TokenRefreshPolicy {
-    match setting {
-        TokenRefreshSetting::Always => TokenRefreshPolicy::Always,
-        TokenRefreshSetting::Never => TokenRefreshPolicy::Never,
-        TokenRefreshSetting::OneHour => TokenRefreshPolicy::After(Duration::from_secs(60 * 60)),
-        TokenRefreshSetting::ThreeHours => {
-            TokenRefreshPolicy::After(Duration::from_secs(3 * 60 * 60))
-        }
-        TokenRefreshSetting::SixHours => {
-            TokenRefreshPolicy::After(Duration::from_secs(6 * 60 * 60))
-        }
-        TokenRefreshSetting::TwelveHours => {
-            TokenRefreshPolicy::After(Duration::from_secs(12 * 60 * 60))
-        }
-        TokenRefreshSetting::TwentyFourHours => {
-            TokenRefreshPolicy::After(Duration::from_secs(24 * 60 * 60))
-        }
-    }
-}
-
-/// 将隧道事件格式化为人类可读的日志行。
-fn format_event(event: &TunnelEvent) -> String {
-    match event {
-        TunnelEvent::PlayerJoined { id } => t!("player_joined", id = id).to_string(),
-        TunnelEvent::PlayerLeft { id, reason } => {
-            t!("player_left", id = id, reason = reason).to_string()
-        }
-        TunnelEvent::Connected => t!("connected_host").to_string(),
-        TunnelEvent::Disconnected { reason } => t!("disconnected", reason = reason).to_string(),
-        TunnelEvent::PathChanged {
-            remote_id,
-            is_relay,
-            rtt_ms,
-        } => {
-            let route = if *is_relay {
-                t!("relay_route")
-            } else {
-                t!("direct_route")
-            };
-            t!("path_changed", id = remote_id, route = route, rtt = rtt_ms).to_string()
-        }
-        TunnelEvent::Reconnecting { attempt } => t!("reconnecting", n = attempt).to_string(),
-        TunnelEvent::Reconnected => t!("reconnected").to_string(),
-        TunnelEvent::TokenRotated => t!("token_rotated").to_string(),
-        TunnelEvent::TokenRotationFailed { retry_in } => {
-            t!("token_rotation_failed", secs = retry_in.as_secs()).to_string()
-        }
-        TunnelEvent::AuthFailed { id } => t!("auth_failed", id = id).to_string(),
-        TunnelEvent::PlayerRejected { id, reason } => {
-            t!("rejected", id = id, reason = reason).to_string()
-        }
-        TunnelEvent::Error { message, .. } => t!("error_msg", msg = message).to_string(),
-        other => format!("[?] {other:?}"),
     }
 }
 
@@ -1226,45 +856,5 @@ mod tests {
         assert!(parse_host_port("0").is_err());
         assert!(parse_host_port("65536").is_err());
         assert!(parse_host_port("invalid").is_err());
-    }
-
-    #[test]
-    fn maps_timed_refresh_policy() {
-        assert_eq!(
-            token_refresh_policy(TokenRefreshSetting::ThreeHours),
-            TokenRefreshPolicy::After(Duration::from_secs(3 * 60 * 60))
-        );
-    }
-
-    #[test]
-    fn requires_three_consecutive_minecraft_probe_failures() {
-        let mut failures = 0;
-        assert!(!record_health_check(&mut failures, false));
-        assert!(!record_health_check(&mut failures, false));
-        assert!(record_health_check(&mut failures, false));
-    }
-
-    #[test]
-    fn successful_minecraft_probe_resets_failures() {
-        let mut failures = 2;
-        assert!(!record_health_check(&mut failures, true));
-        assert_eq!(failures, 0);
-        assert!(!record_health_check(&mut failures, false));
-    }
-
-    #[test]
-    fn identifies_target_unavailable_host_errors_only() {
-        let target_unavailable = TunnelEvent::Error {
-            category: ErrorCategory::TargetUnavailable,
-            message: "target unavailable".to_owned(),
-        };
-        let internal = TunnelEvent::Error {
-            category: ErrorCategory::Internal,
-            message: "internal error".to_owned(),
-        };
-
-        assert!(is_target_unavailable_event(&target_unavailable));
-        assert!(!is_target_unavailable_event(&internal));
-        assert!(!is_target_unavailable_event(&TunnelEvent::Connected));
     }
 }
