@@ -35,7 +35,7 @@ libayatana-appindicator-gtk3 = "*"
 [dependencies]
 sculk = { version = "0.5.1", features = ["persist"] }
 eframe = { version = "0.35", default-features = false, features = ["default_fonts", "persistence", "wayland", "wgpu", "x11"] }
-image = { version = "0.25", features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 rust-i18n = "4"
 dirs = "6"
@@ -53,4 +53,5 @@ winresource = "0.1"
 opt-level = "z"
 lto = true
 codegen-units = 1
+panic = "abort"
 strip = true
