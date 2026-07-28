@@ -1,7 +1,9 @@
 use eframe::egui;
 use std::sync::mpsc::{Receiver, SyncSender};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
-use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+#[cfg(target_os = "windows")]
+use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
+use tray_icon::{TrayIcon, TrayIconBuilder};
 
 const SHOW_MENU_ID: &str = "shrieker-show";
 const QUIT_MENU_ID: &str = "shrieker-quit";
@@ -58,8 +60,9 @@ impl Tray {
 }
 
 fn install_event_handlers(tx: SyncSender<Event>, repaint: egui::Context) {
-    let menu_tx = tx.clone();
-    let menu_repaint = repaint.clone();
+    #[cfg(target_os = "windows")]
+    let (tray_tx, tray_repaint) = (tx.clone(), repaint.clone());
+
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
         let action = match event.id.as_ref() {
             SHOW_MENU_ID => Some(Event::Show),
@@ -67,11 +70,12 @@ fn install_event_handlers(tx: SyncSender<Event>, repaint: egui::Context) {
             _ => None,
         };
         if let Some(action) = action {
-            let _ = menu_tx.try_send(action);
-            menu_repaint.request_repaint();
+            let _ = tx.try_send(action);
+            repaint.request_repaint();
         }
     }));
 
+    #[cfg(target_os = "windows")]
     TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
         if matches!(
             event,
@@ -81,8 +85,8 @@ fn install_event_handlers(tx: SyncSender<Event>, repaint: egui::Context) {
                 ..
             }
         ) {
-            let _ = tx.try_send(Event::Show);
-            repaint.request_repaint();
+            let _ = tray_tx.try_send(Event::Show);
+            tray_repaint.request_repaint();
         }
     }));
 }
@@ -98,12 +102,14 @@ fn build_icon(
     menu.append_items(&[&show, &quit])
         .map_err(|error| error.to_string())?;
 
-    TrayIconBuilder::new()
+    let builder = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip("Shrieker")
-        .with_icon(icon)
-        .build()
-        .map_err(|error| error.to_string())
+        .with_icon(icon);
+    #[cfg(target_os = "windows")]
+    let builder = builder.with_menu_on_left_click(false);
+
+    builder.build().map_err(|error| error.to_string())
 }
 
 fn load_icon() -> Result<tray_icon::Icon, String> {
