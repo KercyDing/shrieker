@@ -44,19 +44,19 @@ fn render_header(app: &mut App, root: &mut egui::Ui, ctx: &egui::Context) {
                     .selectable_label(app.mode == Mode::Host, t!("host"))
                     .clicked()
                 {
-                    app.mode = Mode::Host;
+                    app.set_mode(Mode::Host);
                 }
                 if ui
                     .selectable_label(app.mode == Mode::Join, t!("join"))
                     .clicked()
                 {
-                    app.mode = Mode::Join;
+                    app.set_mode(Mode::Join);
                 }
                 if ui
                     .selectable_label(app.mode == Mode::Relay, t!("relay"))
                     .clicked()
                 {
-                    app.mode = Mode::Relay;
+                    app.set_mode(Mode::Relay);
                 }
             });
 
@@ -101,8 +101,17 @@ fn render_host(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
             .num_columns(2)
             .spacing([12.0, 6.0])
             .show(ui, |ui| {
-                ui.label(t!("mc_port").as_ref());
-                ui.add(egui::TextEdit::singleline(&mut app.host_port).desired_width(120.0));
+                ui.label(t!("mc_server").as_ref());
+                match app.detected_mc_port {
+                    Some(port) => {
+                        ui.label(
+                            egui::RichText::new(t!("mc_server_detected", port = port)).color(GREEN),
+                        );
+                    }
+                    None => {
+                        ui.label(egui::RichText::new(t!("mc_server_scanning")).color(DIM));
+                    }
+                }
                 ui.end_row();
                 ui.label(t!("max_players").as_ref());
                 ui.add(egui::TextEdit::singleline(&mut app.max_players).desired_width(120.0));
@@ -125,7 +134,11 @@ fn render_host(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
 
     ui.add_space(6.0);
     if app.is_idle() {
-        if action_button(ui, !app.stop_pending(), t!("start_host").as_ref()) {
+        if action_button(
+            ui,
+            !app.stop_pending() && app.detected_mc_port.is_some(),
+            t!("start_host").as_ref(),
+        ) {
             app.start_host();
         }
     } else {

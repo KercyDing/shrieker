@@ -4666,9 +4666,9 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sculk"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7facc9047192dec1ac9666248fa76e541281e0bba20e61656f00a1affdd5f52f"
+checksum = "5eaa3ac55f719ab33793965be94c1eb763f79333fa71c6e3cb9755851625f4a1"
 dependencies = [
  "base64 0.23.0",
  "dirs",
@@ -4676,6 +4676,7 @@ dependencies = [
  "iroh",
  "rand 0.10.2",
  "serde",
+ "socket2",
  "subtle",
  "thiserror 2.0.19",
  "tokio",

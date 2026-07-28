@@ -22,9 +22,15 @@ idle:
   en: Idle
   zh-CN: 未运行
 
-mc_port:
-  en: MC Port
-  zh-CN: Minecraft 端口
+mc_server:
+  en: Minecraft Server
+  zh-CN: Minecraft 服务器
+mc_server_scanning:
+  en: Open your world to LAN
+  zh-CN: 请先将世界对局域网开放
+mc_server_detected:
+  en: "Detected on port %{port}"
+  zh-CN: "已检测到，端口 %{port}"
 max_players:
   en: Max Players
   zh-CN: 最大玩家数
@@ -172,6 +178,9 @@ host_ready:
 host_failed:
   en: "[-] Host failed: %{err}"
   zh-CN: "[-] 创建房间失败：%{err}"
+mc_server_unavailable:
+  en: "[-] Minecraft server is unavailable; start the server before hosting"
+  zh-CN: "[-] 未检测到 Minecraft 服务器，请先启动服务器或将世界开放到局域网"
 invalid_share_uri:
   en: "[-] Invalid share URI: %{err}"
   zh-CN: "[-] 分享链接无效：%{err}"
@@ -180,15 +189,18 @@ joined:
   en: "[+] Joined!"
   zh-CN: "[+] 已成功加入房间"
 joined_at:
-  en: "[+] Joined! Published to the LAN list; manual address: %{addr}"
-  zh-CN: "[+] 已成功加入！房间已显示在局域网游戏列表中；也可手动连接：%{addr}"
+  en: "[+] Joined: %{addr}"
+  zh-CN: "[+] 已加入：%{addr}"
 
 lan_broadcast_started:
-  en: "[+] Minecraft LAN discovery started"
-  zh-CN: "[+] Minecraft 局域网游戏广播已启动"
+  en: "[+] Minecraft LAN discovery monitoring started"
+  zh-CN: "[+] Minecraft 局域网游戏发现监测已启动"
 lan_broadcast_failed:
   en: "[-] Minecraft LAN discovery failed: %{err}"
   zh-CN: "[-] Minecraft 局域网游戏广播启动失败：%{err}"
+lan_scan_failed:
+  en: "[-] Minecraft LAN scan failed: %{err}"
+  zh-CN: "[-] Minecraft 局域网游戏扫描失败：%{err}"
 
 address_copied:
   en: "[+] Minecraft address copied"
@@ -209,11 +221,11 @@ relay_saved:
   zh-CN: "[+] 中继设置已保存"
 
 player_joined:
-  en: "[+] Player joined: %{id}"
-  zh-CN: "[+] 玩家已加入：%{id}"
+  en: "[+] Join client connected: %{id}"
+  zh-CN: "[+] 加入端已连接：%{id}"
 player_left:
-  en: "[-] Player left: %{id} (%{reason})"
-  zh-CN: "[-] 玩家已离开：%{id}（%{reason}）"
+  en: "[-] Join client disconnected: %{id} (%{reason})"
+  zh-CN: "[-] 加入端已断开：%{id}（%{reason}）"
 
 connected_host:
   en: "[+] Connected to host"
