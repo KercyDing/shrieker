@@ -1,5 +1,5 @@
 use crate::app::{App, Mode};
-use crate::settings::CloseAction;
+use crate::settings::{self, CloseAction};
 use eframe::egui;
 use sculk::persist::TokenRefreshSetting;
 use sculk::tunnel::TunnelPhase;
@@ -309,25 +309,26 @@ fn render_settings(app: &mut App, ui: &mut egui::Ui) {
         .num_columns(2)
         .spacing([12.0, 6.0])
         .show(ui, |ui| {
-            ui.label(t!("max_retries").as_ref());
+            ui.label(t!("reconnect_timeout").as_ref());
             ui.horizontal(|ui| {
                 ui.checkbox(
                     &mut app.reconnect_unlimited,
                     t!("unlimited_retries").as_ref(),
                 );
-                ui.add_enabled(
-                    !app.reconnect_unlimited,
-                    egui::DragValue::new(&mut app.reconnect_max_retries).range(0..=1000),
-                );
+                ui.add_enabled_ui(!app.reconnect_unlimited, |ui| {
+                    egui::ComboBox::from_id_salt("reconnect_timeout")
+                        .selected_text(format!("{} s", app.reconnect_timeout_secs))
+                        .show_ui(ui, |ui| {
+                            for timeout in settings::RECONNECT_TIMEOUT_OPTIONS_SECS {
+                                ui.selectable_value(
+                                    &mut app.reconnect_timeout_secs,
+                                    timeout,
+                                    format!("{timeout} s"),
+                                );
+                            }
+                        });
+                });
             });
-            ui.end_row();
-
-            ui.label(t!("reconnect_interval").as_ref());
-            ui.add(
-                egui::DragValue::new(&mut app.reconnect_interval_secs)
-                    .range(1..=300)
-                    .suffix(" s"),
-            );
             ui.end_row();
         });
 
@@ -384,13 +385,13 @@ fn render_preferences(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
         let mut close_action = app.close_action;
         ui.radio_value(
             &mut close_action,
-            CloseAction::HideToTray,
-            t!("close_hide_to_tray").as_ref(),
+            CloseAction::Exit,
+            t!("close_exit").as_ref(),
         );
         ui.radio_value(
             &mut close_action,
-            CloseAction::Exit,
-            t!("close_exit").as_ref(),
+            CloseAction::HideToTray,
+            t!("close_hide_to_tray").as_ref(),
         );
         if close_action != app.close_action {
             app.set_close_action(close_action);

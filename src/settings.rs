@@ -8,13 +8,13 @@ const KEY_FILE: &str = "secret.key";
 const HOST_STATE_FILE: &str = "host.state";
 const PREFERENCES_FILE: &str = "preferences.conf";
 
-pub const DEFAULT_RECONNECT_MAX_RETRIES: u32 = 10;
-pub const DEFAULT_RECONNECT_INTERVAL_SECS: u64 = 1;
+pub const DEFAULT_RECONNECT_TIMEOUT_SECS: u64 = 30;
+pub const RECONNECT_TIMEOUT_OPTIONS_SECS: [u64; 5] = [10, 15, 20, 30, 60];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CloseAction {
-    #[default]
     HideToTray,
+    #[default]
     Exit,
 }
 
@@ -34,8 +34,7 @@ pub struct GuiPreferences {
     pub remember_window_state: bool,
     pub close_action: CloseAction,
     pub join_uri: String,
-    pub reconnect_max_retries: Option<u32>,
-    pub reconnect_interval_secs: u64,
+    pub reconnect_timeout_secs: Option<u64>,
 }
 
 impl Default for GuiPreferences {
@@ -46,8 +45,7 @@ impl Default for GuiPreferences {
             remember_window_state: true,
             close_action: CloseAction::default(),
             join_uri: String::new(),
-            reconnect_max_retries: None,
-            reconnect_interval_secs: DEFAULT_RECONNECT_INTERVAL_SECS,
+            reconnect_timeout_secs: None,
         }
     }
 }
@@ -94,18 +92,17 @@ pub fn load() -> LoadedSettings {
 pub fn save_preferences(preferences: &GuiPreferences) -> Result<(), String> {
     let path = preferences_path()?;
     ensure_data_dir()?;
-    let max_retries = preferences
-        .reconnect_max_retries
+    let reconnect_timeout = preferences
+        .reconnect_timeout_secs
         .map_or_else(|| "unlimited".to_owned(), |value| value.to_string());
     let content = format!(
-        "theme={}\nlocale={}\nremember_window_state={}\nclose_action={}\njoin_uri={}\nreconnect_max_retries={}\nreconnect_interval_secs={}\n",
+        "theme={}\nlocale={}\nremember_window_state={}\nclose_action={}\njoin_uri={}\nreconnect_timeout_secs={}\n",
         preferences.theme,
         preferences.locale,
         preferences.remember_window_state,
         preferences.close_action.as_str(),
         preferences.join_uri,
-        max_retries,
-        preferences.reconnect_interval_secs,
+        reconnect_timeout,
     );
     std::fs::write(path, content).map_err(|error| error.to_string())
 }
@@ -134,22 +131,20 @@ fn parse_preferences(content: &str) -> GuiPreferences {
             preferences.remember_window_state = value.trim() == "true";
         } else if let Some(value) = line.strip_prefix("close_action=") {
             preferences.close_action = match value.trim() {
-                "exit" => CloseAction::Exit,
-                _ => CloseAction::HideToTray,
+                "hide_to_tray" => CloseAction::HideToTray,
+                _ => CloseAction::Exit,
             };
         } else if let Some(value) = line.strip_prefix("join_uri=") {
             preferences.join_uri = value.trim().to_owned();
-        } else if let Some(value) = line.strip_prefix("reconnect_max_retries=") {
+        } else if let Some(value) = line.strip_prefix("reconnect_timeout_secs=") {
             let value = value.trim();
             if value == "unlimited" {
-                preferences.reconnect_max_retries = None;
-            } else if let Ok(value) = value.parse() {
-                preferences.reconnect_max_retries = Some(value);
+                preferences.reconnect_timeout_secs = None;
+            } else if let Ok(value) = value.parse()
+                && RECONNECT_TIMEOUT_OPTIONS_SECS.contains(&value)
+            {
+                preferences.reconnect_timeout_secs = Some(value);
             }
-        } else if let Some(value) = line.strip_prefix("reconnect_interval_secs=")
-            && let Ok(value) = value.trim().parse()
-        {
-            preferences.reconnect_interval_secs = value;
         }
     }
     preferences
@@ -192,33 +187,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn legacy_preferences_use_default_reconnect_policy() {
+    fn preferences_without_reconnect_policy_default_to_unlimited() {
         let preferences = parse_preferences("locale=zh-CN\n");
 
         assert_eq!(preferences.theme, "system");
         assert_eq!(preferences.locale, "zh-CN");
         assert!(preferences.remember_window_state);
-        assert_eq!(preferences.close_action, CloseAction::HideToTray);
+        assert_eq!(preferences.close_action, CloseAction::Exit);
         assert!(preferences.join_uri.is_empty());
-        assert_eq!(preferences.reconnect_max_retries, None);
-        assert_eq!(
-            preferences.reconnect_interval_secs,
-            DEFAULT_RECONNECT_INTERVAL_SECS
-        );
+        assert_eq!(preferences.reconnect_timeout_secs, None);
     }
 
     #[test]
-    fn parses_reconnect_policy() {
-        let preferences = parse_preferences(
-            "theme=light\nremember_window_state=false\nclose_action=exit\njoin_uri=sculk://join/v1/example\nreconnect_max_retries=12\nreconnect_interval_secs=2\n",
-        );
+    fn parses_reconnect_timeout_policy() {
+        let finite = parse_preferences("reconnect_timeout_secs=30\n");
+        let unlimited = parse_preferences("reconnect_timeout_secs=unlimited\n");
+        let zero = parse_preferences("reconnect_timeout_secs=0\n");
+        let unsupported = parse_preferences("reconnect_timeout_secs=45\n");
 
-        assert_eq!(preferences.theme, "light");
-        assert_eq!(preferences.locale, "zh-CN");
-        assert!(!preferences.remember_window_state);
-        assert_eq!(preferences.close_action, CloseAction::Exit);
-        assert_eq!(preferences.join_uri, "sculk://join/v1/example");
-        assert_eq!(preferences.reconnect_max_retries, Some(12));
-        assert_eq!(preferences.reconnect_interval_secs, 2);
+        assert_eq!(finite.reconnect_timeout_secs, Some(30));
+        assert_eq!(unlimited.reconnect_timeout_secs, None);
+        assert_eq!(zero.reconnect_timeout_secs, None);
+        assert_eq!(unsupported.reconnect_timeout_secs, None);
     }
 }
