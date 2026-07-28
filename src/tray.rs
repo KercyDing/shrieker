@@ -12,6 +12,7 @@ pub(crate) enum Event {
     Ready,
     Show,
     Exit,
+    #[cfg(target_os = "linux")]
     Failed(String),
 }
 

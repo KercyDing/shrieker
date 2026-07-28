@@ -773,6 +773,7 @@ impl App {
     }
 
     fn poll_tray(&mut self, ctx: &egui::Context) {
+        #[cfg(target_os = "linux")]
         let mut tray_failed = false;
         for _ in 0..TRAY_EVENTS_PER_FRAME_MAX {
             let Some(event) = self.tray.as_ref().and_then(crate::tray::Tray::try_recv) else {
@@ -791,6 +792,7 @@ impl App {
                     self.exit_requested = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
+                #[cfg(target_os = "linux")]
                 crate::tray::Event::Failed(error) => {
                     self.logs.push(t!("tray_failed", err = error).to_string());
                     self.tray_ready = false;
@@ -798,6 +800,7 @@ impl App {
                 }
             }
         }
+        #[cfg(target_os = "linux")]
         if tray_failed {
             self.tray = None;
         }
