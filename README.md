@@ -26,14 +26,17 @@
 
 ### macOS
 
-当前 Release 中的 `shrieker.app` 未进行 Apple 签名/公证，macOS 可能提示“‘shrieker.app’已损坏，无法打开”。
+根据设备架构下载 `shrieker-darwin-arm64.dmg`（Apple Silicon）或
+`shrieker-darwin-amd64.dmg`（Intel），打开后将 `shrieker.app` 拖入 `Applications`。
 
-> 作为一个学生买不起 Apple 开发者账号呜呜🥹
+当前 Release 中的 `shrieker.app` 未进行 Apple 签名/公证，macOS 可能提示
+“‘shrieker.app’已损坏，无法打开”。
 
-先解压下载的 zip，再在当前文件夹下打开终端，并执行：
+> 作为一个学生买不起 Apple 开发者账号 🥹
+
+遇到该提示时，在终端中执行：
 
 ```sh
-mv ./shrieker.app /Applications/
 xattr -dr com.apple.quarantine /Applications/shrieker.app
 ```
 

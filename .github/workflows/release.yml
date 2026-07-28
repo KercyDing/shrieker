@@ -70,7 +70,11 @@ jobs:
 
       - name: Install packager (macOS)
         if: runner.os == 'macOS'
-        run: cargo install --locked cargo-bundle
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/dmgbuild"
+          "${RUNNER_TEMP}/dmgbuild/bin/pip" install "dmgbuild==1.6.7"
+          echo "${RUNNER_TEMP}/dmgbuild/bin" >> "${GITHUB_PATH}"
+          cargo install --locked cargo-bundle
 
       - name: Install packager (Windows)
         if: runner.os == 'Windows'
@@ -97,7 +101,9 @@ jobs:
           cargo bundle --release --target ${{ matrix.target }}
 
           app_path="$(find target -type d -name "${BIN_NAME}.app" | head -n 1)"
-          ditto -c -k --sequesterRsrc --keepParent "$app_path" "${BIN_NAME}-${{ matrix.suffix }}.app.zip"
+          ./packaging/macos/package.sh \
+            "$app_path" \
+            "${BIN_NAME}-${{ matrix.suffix }}.dmg"
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -127,7 +133,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}-packages
-          path: ${{ env.BIN_NAME }}-${{ matrix.suffix }}.app.zip
+          path: ${{ env.BIN_NAME }}-${{ matrix.suffix }}.dmg
+          if-no-files-found: error
 
       - name: Upload artifact (Windows)
         if: runner.os == 'Windows'
