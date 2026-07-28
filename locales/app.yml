@@ -10,7 +10,7 @@ settings:
   en: Settings
   zh-CN: 设置
 preferences:
-  en: Preferences
+  en: Preference
   zh-CN: 偏好
 connected:
   en: Connected
@@ -34,12 +34,24 @@ mc_server_scanning:
 mc_server_detected:
   en: "Detected on port %{port}"
   zh-CN: "已检测到，端口 %{port}"
+port_mode:
+  en: Port Mode
+  zh-CN: 端口模式
+mc_port:
+  en: MC Port
+  zh-CN: MC 端口
+port_auto:
+  en: Auto Detect
+  zh-CN: 自动搜寻端口
+port_manual:
+  en: Enter Manually
+  zh-CN: 手动填写端口
 max_players:
   en: Max Players
   zh-CN: 最大玩家数
 share_uri_lifetime:
-  en: Share URI Lifetime
-  zh-CN: 分享链接有效期
+  en: URI Lifetime
+  zh-CN: 链接有效期
 lifetime_always:
   en: Until closed
   zh-CN: 关闭房间前有效
@@ -71,15 +83,12 @@ start_host:
 share_uri:
   en: Share URI
   zh-CN: 分享链接
-copy_clipboard:
-  en: Copy to Clipboard
-  zh-CN: 复制到剪贴板
 copy:
   en: Copy
   zh-CN: 复制
 refresh_share_uri:
-  en: Refresh URI
-  zh-CN: 刷新分享链接
+  en: Refresh
+  zh-CN: 刷新
 next_refresh:
   en: "Next refresh in %{time}"
   zh-CN: "距下次刷新还有 %{time}"
@@ -92,10 +101,10 @@ auto_port:
   zh-CN: 自动选择
 minecraft_address:
   en: Minecraft Address
-  zh-CN: Minecraft 连接地址
+  zh-CN: Minecraft 地址
 disconnect:
   en: Disconnect
-  zh-CN: 断开连接
+  zh-CN: 断开
 join_btn:
   en: Join
   zh-CN: 加入
@@ -120,7 +129,7 @@ theme:
   zh-CN: 主题
 theme_system:
   en: System
-  zh-CN: 跟随系统
+  zh-CN: 系统
 theme_light:
   en: Light
   zh-CN: 浅色
@@ -176,13 +185,13 @@ direct_route:
 
 logs:
   en: Logs
-  zh-CN: 运行日志
+  zh-CN: 日志
 clear:
   en: Clear
-  zh-CN: 清空日志
+  zh-CN: 清空
 copy_logs:
   en: Copy
-  zh-CN: 复制日志
+  zh-CN: 复制
 logs_copied:
   en: "[+] Logs copied to clipboard"
   zh-CN: "[+] 日志已复制到剪贴板"
@@ -219,7 +228,7 @@ share_uri_failed:
 
 host_ready:
   en: "[+] Host ready"
-  zh-CN: "[+] 房间已创建，可以加入"
+  zh-CN: "[+] 房间已创建"
 host_failed:
   en: "[-] Host failed: %{err}"
   zh-CN: "[-] 创建房间失败：%{err}"
@@ -238,11 +247,11 @@ joined_at:
   zh-CN: "[+] 已加入：%{addr}"
 
 lan_broadcast_started:
-  en: "[+] Minecraft LAN discovery monitoring started"
-  zh-CN: "[+] Minecraft 局域网游戏发现监测已启动"
+  en: "[+] Minecraft LAN monitoring started"
+  zh-CN: "[+] Minecraft 局域网监测已启动"
 lan_broadcast_failed:
   en: "[-] Minecraft LAN discovery failed: %{err}"
-  zh-CN: "[-] Minecraft 局域网游戏广播启动失败：%{err}"
+  zh-CN: "[-] Minecraft 局域网游戏广播失败：%{err}"
 lan_scan_failed:
   en: "[-] Minecraft LAN scan failed: %{err}"
   zh-CN: "[-] Minecraft 局域网游戏扫描失败：%{err}"

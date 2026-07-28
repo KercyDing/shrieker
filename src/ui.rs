@@ -96,15 +96,47 @@ fn render_host(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
             .num_columns(2)
             .spacing([12.0, 6.0])
             .show(ui, |ui| {
-                ui.label(t!("mc_server").as_ref());
-                match app.detected_mc_port {
-                    Some(port) => {
-                        ui.label(
-                            egui::RichText::new(t!("mc_server_detected", port = port)).color(GREEN),
+                ui.label(t!("port_mode").as_ref());
+                egui::ComboBox::from_id_salt("host_port_mode")
+                    .width(HOST_FIELD_WIDTH)
+                    .selected_text(if app.host_manual_port {
+                        t!("port_manual")
+                    } else {
+                        t!("port_auto")
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut app.host_manual_port,
+                            false,
+                            t!("port_auto").as_ref(),
                         );
+                        ui.selectable_value(
+                            &mut app.host_manual_port,
+                            true,
+                            t!("port_manual").as_ref(),
+                        );
+                    });
+                ui.end_row();
+                ui.label(t!("mc_port").as_ref());
+                if app.host_manual_port {
+                    let response = ui.add_sized(
+                        [HOST_FIELD_WIDTH, ui.spacing().interact_size.y],
+                        egui::TextEdit::singleline(&mut app.host_port),
+                    );
+                    if response.changed() {
+                        app.save_host_port();
                     }
-                    None => {
-                        ui.label(egui::RichText::new(t!("mc_server_scanning")).color(YELLOW));
+                } else {
+                    match app.detected_mc_port {
+                        Some(port) => {
+                            ui.label(
+                                egui::RichText::new(t!("mc_server_detected", port = port))
+                                    .color(GREEN),
+                            );
+                        }
+                        None => {
+                            ui.label(egui::RichText::new(t!("mc_server_scanning")).color(YELLOW));
+                        }
                     }
                 }
                 ui.end_row();
@@ -139,26 +171,13 @@ fn render_host(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
     if app.is_idle() {
         if action_button(
             ui,
-            !app.stop_pending() && app.detected_mc_port.is_some(),
+            !app.stop_pending() && app.host_port_ready(),
             t!("start_host").as_ref(),
         ) {
             app.start_host();
         }
-    } else {
-        ui.horizontal(|ui| {
-            if action_button(ui, !app.stop_pending(), t!("stop").as_ref()) {
-                app.stop();
-            }
-            if app.phase() == TunnelPhase::Active
-                && action_button(
-                    ui,
-                    !app.rotate_pending() && !app.stop_pending(),
-                    t!("refresh_share_uri").as_ref(),
-                )
-            {
-                app.rotate_host_uri();
-            }
-        });
+    } else if action_button(ui, !app.stop_pending(), t!("stop").as_ref()) {
+        app.stop();
     }
 
     if let Some(share_uri) = app.share_uri.clone() {
@@ -170,10 +189,19 @@ fn render_host(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
                 .font(egui::TextStyle::Monospace)
                 .desired_width(f32::INFINITY),
         );
-        if ui.button(t!("copy_clipboard").as_ref()).clicked() {
-            ctx.copy_text(share_uri);
-            app.logs.push(t!("share_uri_copied").to_string());
-        }
+        ui.horizontal(|ui| {
+            if ui.button(t!("copy").as_ref()).clicked() {
+                ctx.copy_text(share_uri.clone());
+                app.logs.push(t!("share_uri_copied").to_string());
+            }
+            if action_button(
+                ui,
+                !app.rotate_pending() && !app.stop_pending(),
+                t!("refresh_share_uri").as_ref(),
+            ) {
+                app.rotate_host_uri();
+            }
+        });
         if let Some(deadline) = app
             .host_status
             .as_ref()

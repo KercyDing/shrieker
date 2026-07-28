@@ -84,6 +84,8 @@ pub struct App {
     persisted_preferences: settings::GuiPreferences,
     pub(crate) mode: Mode,
     pub(crate) detected_mc_port: Option<NonZeroU16>,
+    pub(crate) host_manual_port: bool,
+    pub(crate) host_port: String,
     pub(crate) max_players: String,
     pub(crate) token_refresh: TokenRefreshSetting,
     pub(crate) join_uri_input: String,
@@ -149,6 +151,8 @@ impl App {
             persisted_preferences,
             mode: Mode::Host,
             detected_mc_port: None,
+            host_manual_port: false,
+            host_port: loaded.profile.host.port.to_string(),
             max_players: String::new(),
             token_refresh: loaded.profile.host.token_refresh,
             join_uri_input: loaded.preferences.join_uri.clone(),
@@ -224,6 +228,21 @@ impl App {
         self.persist_profile();
     }
 
+    pub(crate) fn save_host_port(&mut self) {
+        if let Ok(port) = parse_host_port(&self.host_port) {
+            self.profile.host.port = port.get();
+            self.persist_profile();
+        }
+    }
+
+    pub(crate) fn host_port_ready(&self) -> bool {
+        if self.host_manual_port {
+            parse_host_port(&self.host_port).is_ok()
+        } else {
+            self.detected_mc_port.is_some()
+        }
+    }
+
     pub(crate) fn save_join_port(&mut self) {
         if let Ok(port) = self.join_port.parse() {
             self.profile.join.port = port;
@@ -239,9 +258,20 @@ impl App {
     }
 
     pub(crate) fn start_host(&mut self) {
-        let Some(mc_port) = self.detected_mc_port.map(NonZeroU16::get) else {
-            self.logs.push(t!("mc_server_unavailable").to_string());
-            return;
+        let mc_port = if self.host_manual_port {
+            match parse_host_port(&self.host_port) {
+                Ok(port) => port.get(),
+                Err(error) => {
+                    self.logs.push(t!("host_failed", err = error).to_string());
+                    return;
+                }
+            }
+        } else {
+            let Some(port) = self.detected_mc_port else {
+                self.logs.push(t!("mc_server_unavailable").to_string());
+                return;
+            };
+            port.get()
         };
         let max_players = match parse_optional_u32(&self.max_players) {
             Ok(value) => value,
@@ -522,13 +552,26 @@ impl App {
     }
 
     fn poll_host_scan(&mut self) {
-        let Some(scanner) = &self.host_scanner else {
-            return;
+        let (detected, finished) = {
+            let Some(scanner) = &self.host_scanner else {
+                return;
+            };
+            let mut detected = None;
+            while let Ok(port) = scanner.try_recv() {
+                detected = Some(port);
+            }
+            (detected, scanner.is_finished())
         };
-        while let Ok(port) = scanner.try_recv() {
+
+        if let Some(port) = detected {
             self.detected_mc_port = Some(port);
+            if !self.host_manual_port {
+                self.host_port = port.to_string();
+                self.profile.host.port = port.get();
+                self.persist_profile();
+            }
         }
-        if !scanner.is_finished() {
+        if !finished {
             return;
         }
         let Some(scanner) = self.host_scanner.take() else {
@@ -987,6 +1030,10 @@ fn parse_local_port(auto: bool, value: &str) -> Result<LocalPort, std::num::Pars
     }
 }
 
+fn parse_host_port(value: &str) -> Result<NonZeroU16, std::num::ParseIntError> {
+    value.parse()
+}
+
 fn parse_optional_u32(value: &str) -> Result<Option<u32>, std::num::ParseIntError> {
     if value.is_empty() {
         Ok(None)
@@ -1106,6 +1153,14 @@ mod tests {
             Ok(LocalPort::Fixed(port)) if port.get() == 30000
         ));
         assert!(parse_local_port(false, "0").is_err());
+    }
+
+    #[test]
+    fn parses_minecraft_host_port() {
+        assert_eq!(parse_host_port("25565").map(NonZeroU16::get), Ok(25_565));
+        assert!(parse_host_port("0").is_err());
+        assert!(parse_host_port("65536").is_err());
+        assert!(parse_host_port("invalid").is_err());
     }
 
     #[test]
