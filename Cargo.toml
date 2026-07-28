@@ -1,6 +1,6 @@
 [package]
 name = "shrieker"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 description = "A GUI client for the sculk P2P tunnel library"
 license = "GPL-3.0"
