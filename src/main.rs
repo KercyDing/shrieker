@@ -80,7 +80,7 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([520.0, 480.0])
             .with_icon(load_icon()),
-        renderer: eframe::Renderer::Wgpu,
+        renderer: eframe::Renderer::Glow,
         persist_window: remember_window_state,
         ..Default::default()
     };
