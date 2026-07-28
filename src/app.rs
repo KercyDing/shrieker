@@ -7,7 +7,7 @@ use sculk::minecraft::probe_server;
 use sculk::persist::{self, HostState, Profile, TokenRefreshSetting};
 use sculk::tunnel::{
     ConnectionSnapshot, HostConfig, HostedServiceHandle, HostedServiceOptions, HostedServiceStatus,
-    JoinOptions, JoinUri, LocalPort, NodeOptions, SculkNode, SecretKey, ServiceId,
+    JoinConfig, JoinOptions, JoinUri, LocalPort, NodeOptions, SculkNode, SecretKey, ServiceId,
     TokenRefreshPolicy, TunnelEvent, TunnelPhase, TunnelService, TunnelStatus, TunnelUpdate,
 };
 use std::net::{Ipv4Addr, SocketAddr};
@@ -28,7 +28,8 @@ const MC_HEALTH_FAILURES_MAX: u8 = 3;
 pub(crate) enum Mode {
     Host,
     Join,
-    Relay,
+    Settings,
+    Preferences,
 }
 
 enum HostCommand {
@@ -48,6 +49,7 @@ enum HostUpdate {
     },
     Event(TunnelEvent),
     Error(String),
+    ScannerStopped(Result<(), String>),
     MinecraftUnavailable,
     Failed(String),
     Stopped(Result<(), String>),
@@ -73,16 +75,19 @@ pub struct App {
     host_rx: mpsc::UnboundedReceiver<HostUpdate>,
     host_update_tx: mpsc::UnboundedSender<HostUpdate>,
     host_scanner: Option<LanScanner>,
+    host_scanner_stopping: bool,
     lan_broadcaster: Option<LanBroadcaster>,
     stop_pending: bool,
     rotate_pending: bool,
     phase: TunnelPhase,
     active_mode: Option<Mode>,
+    persisted_preferences: settings::GuiPreferences,
     pub(crate) mode: Mode,
     pub(crate) detected_mc_port: Option<NonZeroU16>,
     pub(crate) max_players: String,
     pub(crate) token_refresh: TokenRefreshSetting,
     pub(crate) join_uri_input: String,
+    pub(crate) join_uri_select_all: bool,
     pub(crate) join_port: String,
     pub(crate) join_auto_port: bool,
     pub(crate) share_uri: Option<String>,
@@ -91,15 +96,20 @@ pub struct App {
     pub(crate) secret_key: Option<SecretKey>,
     pub(crate) relay_custom: bool,
     pub(crate) relay_url: String,
+    pub(crate) reconnect_unlimited: bool,
+    pub(crate) reconnect_max_retries: u32,
+    pub(crate) reconnect_interval_secs: u64,
+    pub(crate) remember_window_state: bool,
     pub(crate) tunnel: TunnelStatus,
     pub(crate) host_status: Option<HostedServiceStatus>,
-    pub(crate) dark_mode: bool,
+    pub(crate) theme_preference: egui::ThemePreference,
 }
 
 impl App {
     pub fn new(rt: tokio::runtime::Runtime, repaint: egui::Context) -> Self {
         let loaded = settings::load();
-        rust_i18n::set_locale(&loaded.locale);
+        rust_i18n::set_locale(&loaded.preferences.locale);
+        let persisted_preferences = loaded.preferences.clone();
 
         let join_service = TunnelService::new();
         let tunnel = join_service.status();
@@ -130,27 +140,37 @@ impl App {
             host_rx,
             host_update_tx,
             host_scanner,
+            host_scanner_stopping: false,
             lan_broadcaster: None,
             stop_pending: false,
             rotate_pending: false,
             phase: TunnelPhase::Idle,
             active_mode: None,
+            persisted_preferences,
             mode: Mode::Host,
             detected_mc_port: None,
             max_players: String::new(),
             token_refresh: loaded.profile.host.token_refresh,
-            join_uri_input: String::new(),
+            join_uri_input: loaded.preferences.join_uri.clone(),
+            join_uri_select_all: false,
             join_port: loaded.profile.join.port.to_string(),
             join_auto_port: true,
             share_uri: None,
             relay_custom: loaded.profile.relay.custom,
             relay_url: loaded.profile.relay.url.clone().unwrap_or_default(),
+            reconnect_unlimited: loaded.preferences.reconnect_max_retries.is_none(),
+            reconnect_max_retries: loaded
+                .preferences
+                .reconnect_max_retries
+                .unwrap_or(settings::DEFAULT_RECONNECT_MAX_RETRIES),
+            reconnect_interval_secs: loaded.preferences.reconnect_interval_secs,
+            remember_window_state: loaded.preferences.remember_window_state,
             profile: loaded.profile,
             secret_key: loaded.secret_key,
             logs,
             tunnel,
             host_status: None,
-            dark_mode: loaded.dark_mode,
+            theme_preference: Self::parse_theme_preference(&loaded.preferences.theme),
         }
     }
 
@@ -175,6 +195,9 @@ impl App {
             return;
         }
         self.mode = mode;
+        if mode == Mode::Join {
+            self.join_uri_select_all = true;
+        }
         if mode == Mode::Host {
             self.start_host_scan();
         } else {
@@ -196,14 +219,19 @@ impl App {
         }
     }
 
-    /// 保存不包含密钥的用户设置。
-    pub(crate) fn save_profile(&mut self) {
+    pub(crate) fn save_host_token_refresh(&mut self) {
+        self.profile.host.token_refresh = self.token_refresh;
+        self.persist_profile();
+    }
+
+    pub(crate) fn save_join_port(&mut self) {
         if let Ok(port) = self.join_port.parse() {
             self.profile.join.port = port;
+            self.persist_profile();
         }
-        self.profile.host.token_refresh = self.token_refresh;
-        self.profile.relay.custom = self.relay_custom;
-        self.profile.relay.url = (!self.relay_url.is_empty()).then(|| self.relay_url.clone());
+    }
+
+    fn persist_profile(&mut self) {
         if let Err(error) = self.profile.save() {
             self.logs
                 .push(t!("save_profile_err", err = error).to_string());
@@ -242,7 +270,6 @@ impl App {
             }
         };
 
-        self.save_profile();
         let start = HostStart {
             mc_port,
             max_players,
@@ -295,9 +322,10 @@ impl App {
                 return;
             }
         };
-        let options = JoinOptions::new(join_uri).local_port(local_port);
+        let options = JoinOptions::new(join_uri)
+            .local_port(local_port)
+            .config(self.join_config());
 
-        self.save_profile();
         self.logs.push(t!("joining_tunnel").to_string());
         if let Err(error) = self.rt.block_on(self.join_service.start_join(options)) {
             self.logs.push(t!("join_failed", err = error).to_string());
@@ -402,6 +430,8 @@ impl App {
         let previous = self.phase;
         self.phase = status.state.phase;
         if previous != TunnelPhase::Active && self.phase == TunnelPhase::Active {
+            self.persisted_preferences.join_uri = self.join_uri_input.trim().to_owned();
+            self.persist_preferences();
             if let Some(addr) = status.state.local_addr {
                 if !self.stop_pending {
                     self.start_lan_broadcast(addr.port());
@@ -462,6 +492,7 @@ impl App {
 
     fn start_host_scan(&mut self) {
         if self.host_scanner.is_some()
+            || self.host_scanner_stopping
             || self.detected_mc_port.is_some()
             || self.mode != Mode::Host
             || !self.is_idle()
@@ -480,10 +511,14 @@ impl App {
         let Some(scanner) = self.host_scanner.take() else {
             return;
         };
-        if let Err(error) = scanner.stop() {
-            self.logs
-                .push(t!("lan_scan_failed", err = error).to_string());
-        }
+        self.host_scanner_stopping = true;
+        let updates = self.host_update_tx.clone();
+        let repaint = self.repaint.clone();
+        self.rt.spawn_blocking(move || {
+            let result = scanner.stop().map_err(|error| error.to_string());
+            let _ = updates.send(HostUpdate::ScannerStopped(result));
+            repaint.request_repaint();
+        });
     }
 
     fn poll_host_scan(&mut self) {
@@ -523,6 +558,14 @@ impl App {
             HostUpdate::Error(error) => {
                 self.rotate_pending = false;
                 self.logs.push(t!("error_msg", msg = error).to_string());
+            }
+            HostUpdate::ScannerStopped(result) => {
+                self.host_scanner_stopping = false;
+                if let Err(error) = result {
+                    self.logs
+                        .push(t!("lan_scan_failed", err = error).to_string());
+                }
+                self.start_host_scan();
             }
             HostUpdate::MinecraftUnavailable => {
                 self.detected_mc_port = None;
@@ -574,34 +617,72 @@ impl App {
         self.start_host_scan();
     }
 
-    /// 切换语言。
-    pub(crate) fn toggle_lang(&mut self) {
-        let current = rust_i18n::locale();
-        if &*current == "zh-CN" {
-            rust_i18n::set_locale("en");
-        } else {
-            rust_i18n::set_locale("zh-CN");
+    pub(crate) fn set_language(&mut self, locale: &str) {
+        if &*rust_i18n::locale() != locale {
+            rust_i18n::set_locale(locale);
         }
-        self.save_preferences();
     }
 
-    /// 切换主题。
-    pub(crate) fn toggle_theme(&mut self, ctx: &egui::Context) {
-        self.dark_mode = !self.dark_mode;
-        let theme = if self.dark_mode {
-            egui::Theme::Dark
-        } else {
-            egui::Theme::Light
-        };
+    pub(crate) fn set_theme(&mut self, theme: egui::ThemePreference, ctx: &egui::Context) {
+        if self.theme_preference == theme {
+            return;
+        }
+        self.theme_preference = theme;
         ctx.set_theme(theme);
-        self.save_preferences();
     }
 
-    fn save_preferences(&mut self) {
-        if let Err(error) = settings::save_preferences(self.dark_mode, rust_i18n::locale().as_ref())
-        {
+    pub(crate) fn set_remember_window_state(&mut self, remember: bool) {
+        self.remember_window_state = remember;
+    }
+
+    pub(crate) fn save_settings(&mut self) {
+        self.profile.relay.custom = self.relay_custom;
+        self.profile.relay.url = (!self.relay_url.is_empty()).then(|| self.relay_url.clone());
+        self.persist_profile();
+        self.persisted_preferences.reconnect_max_retries =
+            (!self.reconnect_unlimited).then_some(self.reconnect_max_retries);
+        self.persisted_preferences.reconnect_interval_secs = self.reconnect_interval_secs;
+        self.persist_preferences();
+        self.logs.push(t!("settings_saved").to_string());
+    }
+
+    pub(crate) fn save_preference_settings(&mut self) {
+        self.persisted_preferences.theme = Self::theme_name(self.theme_preference).to_owned();
+        self.persisted_preferences.locale = rust_i18n::locale().to_string();
+        self.persisted_preferences.remember_window_state = self.remember_window_state;
+        self.persist_preferences();
+        self.logs.push(t!("preferences_saved").to_string());
+    }
+
+    fn persist_preferences(&mut self) {
+        if let Err(error) = settings::save_preferences(&self.persisted_preferences) {
             self.logs
                 .push(t!("save_preferences_err", err = error).to_string());
+        }
+    }
+
+    fn join_config(&self) -> JoinConfig {
+        let mut config = JoinConfig::new();
+        config.max_retries = (!self.reconnect_unlimited).then_some(self.reconnect_max_retries);
+        let reconnect_interval = Duration::from_secs(self.reconnect_interval_secs);
+        config.base_backoff = reconnect_interval;
+        config.max_backoff = reconnect_interval;
+        config
+    }
+
+    fn parse_theme_preference(value: &str) -> egui::ThemePreference {
+        match value {
+            "light" => egui::ThemePreference::Light,
+            "dark" => egui::ThemePreference::Dark,
+            _ => egui::ThemePreference::System,
+        }
+    }
+
+    fn theme_name(theme: egui::ThemePreference) -> &'static str {
+        match theme {
+            egui::ThemePreference::System => "system",
+            egui::ThemePreference::Light => "light",
+            egui::ThemePreference::Dark => "dark",
         }
     }
 
@@ -978,6 +1059,7 @@ impl eframe::App for App {
             || self.rotate_pending
             || !self.is_idle()
             || (self.mode == Mode::Host && self.host_scanner.is_some())
+            || self.host_scanner_stopping
         {
             ctx.request_repaint_after(Duration::from_millis(200));
         }

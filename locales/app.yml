@@ -6,9 +6,12 @@ host:
 join:
   en: Join
   zh-CN: 加入房间
-relay:
-  en: Relay Settings
-  zh-CN: 中继设置
+settings:
+  en: Settings
+  zh-CN: 设置
+preferences:
+  en: Preferences
+  zh-CN: 偏好
 connected:
   en: Connected
   zh-CN: 已连接
@@ -106,6 +109,42 @@ custom_relay:
 save:
   en: Save
   zh-CN: 保存
+remember_window_state:
+  en: Remember window size and position
+  zh-CN: 记住窗口大小和位置
+appearance:
+  en: Appearance
+  zh-CN: 外观
+theme:
+  en: Theme
+  zh-CN: 主题
+theme_system:
+  en: System
+  zh-CN: 跟随系统
+theme_light:
+  en: Light
+  zh-CN: 浅色
+theme_dark:
+  en: Dark
+  zh-CN: 深色
+language:
+  en: Language
+  zh-CN: 语言
+relay_settings:
+  en: Relay
+  zh-CN: 中继
+reconnect_settings:
+  en: Reconnection
+  zh-CN: 重连
+max_retries:
+  en: Retry limit
+  zh-CN: 最大重试次数
+unlimited_retries:
+  en: Unlimited
+  zh-CN: 无限
+reconnect_interval:
+  en: Retry interval (seconds)
+  zh-CN: 重连间隔（秒）
 
 connections:
   en: Connections
@@ -141,6 +180,12 @@ logs:
 clear:
   en: Clear
   zh-CN: 清空日志
+copy_logs:
+  en: Copy
+  zh-CN: 复制日志
+logs_copied:
+  en: "[+] Logs copied to clipboard"
+  zh-CN: "[+] 日志已复制到剪贴板"
 
 profile_loaded:
   en: "[+] Profile and key loaded"
@@ -216,9 +261,12 @@ stop_failed:
   en: "[-] Stop failed: %{err}"
   zh-CN: "[-] 停止连接失败：%{err}"
 
-relay_saved:
-  en: "[+] Relay settings saved"
-  zh-CN: "[+] 中继设置已保存"
+settings_saved:
+  en: "[+] Settings saved"
+  zh-CN: "[+] 设置已保存"
+preferences_saved:
+  en: "[+] Preferences saved"
+  zh-CN: "[+] 偏好已保存"
 
 player_joined:
   en: "[+] Join client connected: %{id}"

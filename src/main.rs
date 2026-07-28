@@ -214,11 +214,13 @@ fn parse_fontconfig_candidate(output: &[u8]) -> Option<FontCandidate> {
 
 fn main() -> eframe::Result<()> {
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    let remember_window_state = settings::load_preferences().remember_window_state;
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([520.0, 480.0])
             .with_icon(load_icon()),
+        persist_window: remember_window_state,
         ..Default::default()
     };
 
@@ -230,12 +232,7 @@ fn main() -> eframe::Result<()> {
             setup_system_fonts(ctx);
             setup_ui_style(ctx);
             let app = app::App::new(rt, ctx.clone());
-            let theme = if app.dark_mode {
-                egui::Theme::Dark
-            } else {
-                egui::Theme::Light
-            };
-            ctx.set_theme(theme);
+            ctx.set_theme(app.theme_preference);
             Ok(Box::new(app))
         }),
     )

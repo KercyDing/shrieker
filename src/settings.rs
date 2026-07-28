@@ -2,12 +2,37 @@ use sculk::persist::{self, Profile};
 use sculk::tunnel::SecretKey;
 use std::path::PathBuf;
 
+pub const DEFAULT_RECONNECT_MAX_RETRIES: u32 = 10;
+pub const DEFAULT_RECONNECT_INTERVAL_SECS: u64 = 1;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GuiPreferences {
+    pub theme: String,
+    pub locale: String,
+    pub remember_window_state: bool,
+    pub join_uri: String,
+    pub reconnect_max_retries: Option<u32>,
+    pub reconnect_interval_secs: u64,
+}
+
+impl Default for GuiPreferences {
+    fn default() -> Self {
+        Self {
+            theme: "system".to_owned(),
+            locale: "zh-CN".to_owned(),
+            remember_window_state: true,
+            join_uri: String::new(),
+            reconnect_max_retries: None,
+            reconnect_interval_secs: DEFAULT_RECONNECT_INTERVAL_SECS,
+        }
+    }
+}
+
 pub struct LoadedSettings {
     pub profile: Profile,
     pub secret_key: Option<SecretKey>,
     pub errors: Vec<String>,
-    pub dark_mode: bool,
-    pub locale: String,
+    pub preferences: GuiPreferences,
 }
 
 /// 加载 core 配置、节点密钥和 GUI 偏好。
@@ -28,47 +53,110 @@ pub fn load() -> LoadedSettings {
                 None
             }
         };
-    let (dark_mode, locale) = load_preferences();
+    let preferences = load_preferences();
 
     LoadedSettings {
         profile,
         secret_key,
         errors,
-        dark_mode,
-        locale,
+        preferences,
     }
 }
 
-/// 保存 GUI 自身的主题和语言偏好。
-pub fn save_preferences(dark_mode: bool, locale: &str) -> Result<(), String> {
+/// 保存 GUI 自身的偏好。
+pub fn save_preferences(preferences: &GuiPreferences) -> Result<(), String> {
     let path = preferences_path()?;
-    let content = format!("dark_mode={dark_mode}\nlocale={locale}\n");
+    let max_retries = preferences
+        .reconnect_max_retries
+        .map_or_else(|| "unlimited".to_owned(), |value| value.to_string());
+    let content = format!(
+        "theme={}\nlocale={}\nremember_window_state={}\njoin_uri={}\nreconnect_max_retries={}\nreconnect_interval_secs={}\n",
+        preferences.theme,
+        preferences.locale,
+        preferences.remember_window_state,
+        preferences.join_uri,
+        max_retries,
+        preferences.reconnect_interval_secs,
+    );
     std::fs::write(path, content).map_err(|error| error.to_string())
 }
 
-fn load_preferences() -> (bool, String) {
-    let defaults = (true, "en".to_owned());
+pub fn load_preferences() -> GuiPreferences {
     let Ok(path) = preferences_path() else {
-        return defaults;
+        return GuiPreferences::default();
     };
     let Ok(content) = std::fs::read_to_string(path) else {
-        return defaults;
+        return GuiPreferences::default();
     };
+    parse_preferences(&content)
+}
 
-    let mut dark_mode = defaults.0;
-    let mut locale = defaults.1;
+fn parse_preferences(content: &str) -> GuiPreferences {
+    let mut preferences = GuiPreferences::default();
     for line in content.lines() {
-        if let Some(value) = line.strip_prefix("dark_mode=") {
-            dark_mode = value.trim() == "true";
+        if let Some(value) = line.strip_prefix("theme=") {
+            let value = value.trim();
+            if matches!(value, "system" | "light" | "dark") {
+                preferences.theme = value.to_owned();
+            }
         } else if let Some(value) = line.strip_prefix("locale=") {
-            locale = value.trim().to_owned();
+            preferences.locale = value.trim().to_owned();
+        } else if let Some(value) = line.strip_prefix("remember_window_state=") {
+            preferences.remember_window_state = value.trim() == "true";
+        } else if let Some(value) = line.strip_prefix("join_uri=") {
+            preferences.join_uri = value.trim().to_owned();
+        } else if let Some(value) = line.strip_prefix("reconnect_max_retries=") {
+            let value = value.trim();
+            if value == "unlimited" {
+                preferences.reconnect_max_retries = None;
+            } else if let Ok(value) = value.parse() {
+                preferences.reconnect_max_retries = Some(value);
+            }
+        } else if let Some(value) = line.strip_prefix("reconnect_interval_secs=")
+            && let Ok(value) = value.trim().parse()
+        {
+            preferences.reconnect_interval_secs = value;
         }
     }
-    (dark_mode, locale)
+    preferences
 }
 
 fn preferences_path() -> Result<PathBuf, String> {
     persist::data_dir()
         .map(|path| path.join("shrieker.conf"))
         .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_preferences_use_default_reconnect_policy() {
+        let preferences = parse_preferences("locale=zh-CN\n");
+
+        assert_eq!(preferences.theme, "system");
+        assert_eq!(preferences.locale, "zh-CN");
+        assert!(preferences.remember_window_state);
+        assert!(preferences.join_uri.is_empty());
+        assert_eq!(preferences.reconnect_max_retries, None);
+        assert_eq!(
+            preferences.reconnect_interval_secs,
+            DEFAULT_RECONNECT_INTERVAL_SECS
+        );
+    }
+
+    #[test]
+    fn parses_reconnect_policy() {
+        let preferences = parse_preferences(
+            "theme=light\nremember_window_state=false\njoin_uri=sculk://join/v1/example\nreconnect_max_retries=12\nreconnect_interval_secs=2\n",
+        );
+
+        assert_eq!(preferences.theme, "light");
+        assert_eq!(preferences.locale, "zh-CN");
+        assert!(!preferences.remember_window_state);
+        assert_eq!(preferences.join_uri, "sculk://join/v1/example");
+        assert_eq!(preferences.reconnect_max_retries, Some(12));
+        assert_eq!(preferences.reconnect_interval_secs, 2);
+    }
 }

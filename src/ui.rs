@@ -8,25 +8,29 @@ const GREEN: egui::Color32 = egui::Color32::from_rgb(74, 222, 128);
 const BLUE: egui::Color32 = egui::Color32::from_rgb(125, 211, 252);
 const RED: egui::Color32 = egui::Color32::from_rgb(248, 113, 113);
 const DIM: egui::Color32 = egui::Color32::from_rgb(120, 120, 120);
+const HOST_FIELD_WIDTH: f32 = 130.0;
 
 /// 渲染完整应用界面。
 pub fn render(app: &mut App, root: &mut egui::Ui) {
     let ctx = root.ctx().clone();
-    render_header(app, root, &ctx);
+    render_header(app, root);
 
     egui::CentralPanel::default().show(root, |ui| {
         match app.mode {
             Mode::Host => render_host(app, ui, &ctx),
             Mode::Join => render_join(app, ui),
-            Mode::Relay => render_relay(app, ui),
+            Mode::Settings => render_settings(app, ui),
+            Mode::Preferences => render_preferences(app, ui, &ctx),
         }
 
-        render_status(app, ui);
-        render_logs(app, ui);
+        if matches!(app.mode, Mode::Host | Mode::Join) {
+            render_status(app, ui);
+            render_logs(app, ui);
+        }
     });
 }
 
-fn render_header(app: &mut App, root: &mut egui::Ui, ctx: &egui::Context) {
+fn render_header(app: &mut App, root: &mut egui::Ui) {
     egui::Panel::top("header").show(root, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
@@ -53,10 +57,16 @@ fn render_header(app: &mut App, root: &mut egui::Ui, ctx: &egui::Context) {
                     app.set_mode(Mode::Join);
                 }
                 if ui
-                    .selectable_label(app.mode == Mode::Relay, t!("relay"))
+                    .selectable_label(app.mode == Mode::Settings, t!("settings"))
                     .clicked()
                 {
-                    app.set_mode(Mode::Relay);
+                    app.set_mode(Mode::Settings);
+                }
+                if ui
+                    .selectable_label(app.mode == Mode::Preferences, t!("preferences"))
+                    .clicked()
+                {
+                    app.set_mode(Mode::Preferences);
                 }
             });
 
@@ -73,22 +83,6 @@ fn render_header(app: &mut App, root: &mut egui::Ui, ctx: &egui::Context) {
                     DIM
                 };
                 ui.label(egui::RichText::new(status.as_ref()).color(color).small());
-
-                ui.separator();
-
-                let lang_label = if &*rust_i18n::locale() == "zh-CN" {
-                    "EN"
-                } else {
-                    "中"
-                };
-                if ui.small_button(lang_label).clicked() {
-                    app.toggle_lang();
-                }
-
-                let theme_label = if app.dark_mode { "☀" } else { "🌙" };
-                if ui.small_button(theme_label).clicked() {
-                    app.toggle_theme(ctx);
-                }
             });
         });
         ui.add_space(4.0);
@@ -114,10 +108,15 @@ fn render_host(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
                 }
                 ui.end_row();
                 ui.label(t!("max_players").as_ref());
-                ui.add(egui::TextEdit::singleline(&mut app.max_players).desired_width(120.0));
+                ui.add_sized(
+                    [HOST_FIELD_WIDTH, ui.spacing().interact_size.y],
+                    egui::TextEdit::singleline(&mut app.max_players),
+                );
                 ui.end_row();
                 ui.label(t!("share_uri_lifetime").as_ref());
+                let previous_token_refresh = app.token_refresh;
                 egui::ComboBox::from_id_salt("token_refresh")
+                    .width(HOST_FIELD_WIDTH)
                     .selected_text(token_refresh_label(app.token_refresh))
                     .show_ui(ui, |ui| {
                         for setting in token_refresh_settings() {
@@ -128,6 +127,9 @@ fn render_host(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
                             );
                         }
                     });
+                if app.token_refresh != previous_token_refresh {
+                    app.save_host_token_refresh();
+                }
                 ui.end_row();
             });
     });
@@ -195,19 +197,34 @@ fn render_join(app: &mut App, ui: &mut egui::Ui) {
             .spacing([12.0, 6.0])
             .show(ui, |ui| {
                 ui.label(t!("share_uri").as_ref());
-                ui.add(
-                    egui::TextEdit::singleline(&mut app.join_uri_input)
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(f32::INFINITY),
-                );
+                let mut output = egui::TextEdit::singleline(&mut app.join_uri_input)
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(f32::INFINITY)
+                    .show(ui);
+                if app.join_uri_select_all {
+                    use egui::text::{CCursor, CCursorRange};
+
+                    output.response.request_focus();
+                    let end = CCursor::new(app.join_uri_input.chars().count());
+                    output
+                        .state
+                        .cursor
+                        .set_char_range(Some(CCursorRange::two(CCursor::new(0), end)));
+                    output.state.store(ui.ctx(), output.response.id);
+                    app.join_uri_select_all = false;
+                    ui.ctx().request_repaint();
+                }
                 ui.end_row();
                 ui.label(t!("local_port").as_ref());
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut app.join_auto_port, t!("auto_port").as_ref());
-                    ui.add_enabled(
+                    let port_response = ui.add_enabled(
                         !app.join_auto_port,
                         egui::TextEdit::singleline(&mut app.join_port).desired_width(90.0),
                     );
+                    if port_response.changed() {
+                        app.save_join_port();
+                    }
                 });
                 ui.end_row();
             });
@@ -239,7 +256,9 @@ fn action_button(ui: &mut egui::Ui, enabled: bool, label: &str) -> bool {
     ui.add_enabled(enabled, egui::Button::new(label)).clicked()
 }
 
-fn render_relay(app: &mut App, ui: &mut egui::Ui) {
+fn render_settings(app: &mut App, ui: &mut egui::Ui) {
+    ui.label(egui::RichText::new(t!("relay_settings").as_ref()).strong());
+    ui.add_space(2.0);
     ui.radio_value(&mut app.relay_custom, false, t!("default_relay").as_ref());
     ui.radio_value(&mut app.relay_custom, true, t!("custom_relay").as_ref());
 
@@ -251,9 +270,96 @@ fn render_relay(app: &mut App, ui: &mut egui::Ui) {
     }
 
     ui.add_space(8.0);
+    ui.separator();
+    ui.add_space(6.0);
+    ui.label(egui::RichText::new(t!("reconnect_settings").as_ref()).strong());
+    ui.add_space(2.0);
+    egui::Grid::new("reconnect_cfg")
+        .num_columns(2)
+        .spacing([12.0, 6.0])
+        .show(ui, |ui| {
+            ui.label(t!("max_retries").as_ref());
+            ui.horizontal(|ui| {
+                ui.checkbox(
+                    &mut app.reconnect_unlimited,
+                    t!("unlimited_retries").as_ref(),
+                );
+                ui.add_enabled(
+                    !app.reconnect_unlimited,
+                    egui::DragValue::new(&mut app.reconnect_max_retries).range(0..=1000),
+                );
+            });
+            ui.end_row();
+
+            ui.label(t!("reconnect_interval").as_ref());
+            ui.add(
+                egui::DragValue::new(&mut app.reconnect_interval_secs)
+                    .range(1..=300)
+                    .suffix(" s"),
+            );
+            ui.end_row();
+        });
+
+    ui.add_space(8.0);
     if ui.button(t!("save").as_ref()).clicked() {
-        app.save_profile();
-        app.logs.push(t!("relay_saved").to_string());
+        app.save_settings();
+    }
+}
+
+fn render_preferences(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
+    ui.label(egui::RichText::new(t!("language").as_ref()).strong());
+    ui.add_space(2.0);
+    let current_locale = rust_i18n::locale();
+    if ui.radio(&*current_locale == "zh-CN", "简体中文").clicked() {
+        app.set_language("zh-CN");
+    }
+    if ui.radio(&*current_locale == "en", "English").clicked() {
+        app.set_language("en");
+    }
+
+    ui.add_space(8.0);
+    ui.separator();
+    ui.add_space(6.0);
+    ui.label(egui::RichText::new(t!("appearance").as_ref()).strong());
+    ui.add_space(2.0);
+
+    let mut theme = app.theme_preference;
+    ui.horizontal(|ui| {
+        ui.label(t!("theme").as_ref());
+        ui.radio_value(
+            &mut theme,
+            egui::ThemePreference::System,
+            t!("theme_system").as_ref(),
+        );
+        ui.radio_value(
+            &mut theme,
+            egui::ThemePreference::Light,
+            t!("theme_light").as_ref(),
+        );
+        ui.radio_value(
+            &mut theme,
+            egui::ThemePreference::Dark,
+            t!("theme_dark").as_ref(),
+        );
+    });
+    if theme != app.theme_preference {
+        app.set_theme(theme, ctx);
+    }
+
+    let mut remember_window_state = app.remember_window_state;
+    if ui
+        .checkbox(
+            &mut remember_window_state,
+            t!("remember_window_state").as_ref(),
+        )
+        .changed()
+    {
+        app.set_remember_window_state(remember_window_state);
+    }
+
+    ui.add_space(8.0);
+    if ui.button(t!("save").as_ref()).clicked() {
+        app.save_preference_settings();
     }
 }
 
@@ -365,6 +471,16 @@ fn render_logs(app: &mut App, ui: &mut egui::Ui) {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.small_button(t!("clear").as_ref()).clicked() {
                 app.logs.clear();
+            }
+            if ui.small_button(t!("copy_logs").as_ref()).clicked() {
+                let confirmations = [
+                    t!("logs_copied", locale = "en").to_string(),
+                    t!("logs_copied", locale = "zh-CN").to_string(),
+                ];
+                app.logs
+                    .retain(|line| !confirmations.iter().any(|message| message == line));
+                ui.ctx().copy_text(app.logs.join("\n"));
+                app.logs.push(t!("logs_copied").to_string());
             }
         });
     });
