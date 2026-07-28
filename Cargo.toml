@@ -33,7 +33,7 @@ assets = [
 libayatana-appindicator-gtk3 = "*"
 
 [dependencies]
-sculk = { git = "https://github.com/KercyDing/sculk.git", features = ["persist"] }
+sculk = { version = "0.6.0", features = ["persist"] }
 eframe = { version = "0.35", default-features = false, features = ["default_fonts", "glow", "persistence", "wayland", "x11"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

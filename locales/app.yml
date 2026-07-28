@@ -163,15 +163,12 @@ relay_settings:
 reconnect_settings:
   en: Reconnection
   zh-CN: 重连
-max_retries:
-  en: Retry limit
-  zh-CN: 最大重试次数
+reconnect_timeout:
+  en: Reconnect time
+  zh-CN: 重连时间
 unlimited_retries:
   en: Unlimited
   zh-CN: 无限
-reconnect_interval:
-  en: Retry interval (seconds)
-  zh-CN: 重连间隔（秒）
 
 connections:
   en: Connections
@@ -314,8 +311,11 @@ path_changed:
   zh-CN: "[*] %{id}：%{route}，延迟 %{rtt} ms"
 
 reconnecting:
-  en: "[*] Reconnecting (attempt %{n})..."
-  zh-CN: "[*] 正在尝试重连（第 %{n} 次）..."
+  en: "[*] Reconnect attempt %{n}..."
+  zh-CN: "[*] 第 %{n} 次重连尝试..."
+reconnecting_limited:
+  en: "[*] Reconnect attempt %{n} (%{n}/%{max})..."
+  zh-CN: "[*] 第 %{n} 次重连尝试（%{n}/%{max}）..."
 reconnected:
   en: "[+] Reconnected"
   zh-CN: "[+] 已重新连接"

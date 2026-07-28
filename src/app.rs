@@ -67,8 +67,7 @@ pub struct App {
     pub(crate) relay_custom: bool,
     pub(crate) relay_url: String,
     pub(crate) reconnect_unlimited: bool,
-    pub(crate) reconnect_max_retries: u32,
-    pub(crate) reconnect_interval_secs: u64,
+    pub(crate) reconnect_timeout_secs: u64,
     pub(crate) remember_window_state: bool,
     pub(crate) close_action: settings::CloseAction,
     pub(crate) tunnel: TunnelStatus,
@@ -149,12 +148,11 @@ impl App {
             share_uri: None,
             relay_custom: loaded.profile.relay.custom,
             relay_url: loaded.profile.relay.url.clone().unwrap_or_default(),
-            reconnect_unlimited: loaded.preferences.reconnect_max_retries.is_none(),
-            reconnect_max_retries: loaded
+            reconnect_unlimited: loaded.preferences.reconnect_timeout_secs.is_none(),
+            reconnect_timeout_secs: loaded
                 .preferences
-                .reconnect_max_retries
-                .unwrap_or(settings::DEFAULT_RECONNECT_MAX_RETRIES),
-            reconnect_interval_secs: loaded.preferences.reconnect_interval_secs,
+                .reconnect_timeout_secs
+                .unwrap_or(settings::DEFAULT_RECONNECT_TIMEOUT_SECS),
             remember_window_state: loaded.preferences.remember_window_state,
             close_action: loaded.preferences.close_action,
             profile: loaded.profile,
@@ -438,7 +436,16 @@ impl App {
                 _ => {}
             }
         }
-        self.logs.push(tunnel::format_event(&event));
+        let log = match &event {
+            TunnelEvent::Reconnecting { attempt } if !self.reconnect_unlimited => t!(
+                "reconnecting_limited",
+                n = attempt,
+                max = self.reconnect_timeout_secs
+            )
+            .to_string(),
+            _ => tunnel::format_event(&event),
+        };
+        self.logs.push(log);
     }
 
     fn apply_join_status(&mut self, status: TunnelStatus) {
@@ -668,9 +675,8 @@ impl App {
         self.profile.relay.custom = self.relay_custom;
         self.profile.relay.url = (!self.relay_url.is_empty()).then(|| self.relay_url.clone());
         self.persist_profile();
-        self.persisted_preferences.reconnect_max_retries =
-            (!self.reconnect_unlimited).then_some(self.reconnect_max_retries);
-        self.persisted_preferences.reconnect_interval_secs = self.reconnect_interval_secs;
+        self.persisted_preferences.reconnect_timeout_secs =
+            (!self.reconnect_unlimited).then_some(self.reconnect_timeout_secs);
         self.persist_preferences();
         self.logs.push(t!("settings_saved").to_string());
     }
@@ -693,10 +699,8 @@ impl App {
 
     fn join_config(&self) -> JoinConfig {
         let mut config = JoinConfig::new();
-        config.max_retries = (!self.reconnect_unlimited).then_some(self.reconnect_max_retries);
-        let reconnect_interval = Duration::from_secs(self.reconnect_interval_secs);
-        config.base_backoff = reconnect_interval;
-        config.max_backoff = reconnect_interval;
+        config.reconnect_timeout =
+            (!self.reconnect_unlimited).then_some(Duration::from_secs(self.reconnect_timeout_secs));
         config
     }
 
