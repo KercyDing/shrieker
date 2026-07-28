@@ -4624,8 +4624,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 [[package]]
 name = "sculk"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5eaa3ac55f719ab33793965be94c1eb763f79333fa71c6e3cb9755851625f4a1"
+source = "git+https://github.com/KercyDing/sculk.git#8ba7292cb5b1ea85c68c7a4e514538c0c7b1abc7"
 dependencies = [
  "base64 0.23.0",
  "dirs",
