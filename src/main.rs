@@ -5,6 +5,7 @@ extern crate rust_i18n;
 
 mod app;
 mod settings;
+mod tray;
 mod ui;
 
 i18n!("locales", fallback = "en");
@@ -212,7 +213,7 @@ fn main() -> eframe::Result<()> {
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     let remember_window_state = settings::load_preferences().remember_window_state;
 
-    let options = eframe::NativeOptions {
+    let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([520.0, 480.0])
             .with_icon(load_icon()),
@@ -220,6 +221,7 @@ fn main() -> eframe::Result<()> {
         persist_window: remember_window_state,
         ..Default::default()
     };
+    let close_to_tray = configure_tray_window(&mut options);
 
     eframe::run_native(
         "shrieker",
@@ -228,11 +230,31 @@ fn main() -> eframe::Result<()> {
             let ctx = &cc.egui_ctx;
             setup_system_fonts(ctx);
             setup_ui_style(ctx);
-            let app = app::App::new(rt, ctx.clone());
+            let app = app::App::new(rt, ctx.clone(), close_to_tray);
             ctx.set_theme(app.theme_preference);
             Ok(Box::new(app))
         }),
     )
+}
+
+#[cfg(target_os = "linux")]
+fn configure_tray_window(options: &mut eframe::NativeOptions) -> bool {
+    use winit::platform::x11::EventLoopBuilderExtX11;
+
+    let has_x11 = std::env::var_os("DISPLAY").is_some_and(|display| !display.is_empty());
+    if !has_x11 {
+        return false;
+    }
+
+    options.event_loop_builder = Some(Box::new(|builder| {
+        builder.with_x11();
+    }));
+    true
+}
+
+#[cfg(not(target_os = "linux"))]
+fn configure_tray_window(_options: &mut eframe::NativeOptions) -> bool {
+    true
 }
 
 #[cfg(test)]

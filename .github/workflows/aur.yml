@@ -111,7 +111,7 @@ jobs:
           arch=('x86_64')
           url='https://github.com/${{ steps.meta.outputs.repo }}'
           license=('GPL3')
-          depends=('glibc' 'gcc-libs' 'libxkbcommon' 'wayland' 'libx11' 'libglvnd' 'glib2')
+          depends=('glibc' 'gcc-libs' 'libxkbcommon' 'wayland' 'libx11' 'libglvnd' 'glib2' 'gtk3' 'libayatana-appindicator')
           provides=('shrieker')
           conflicts=('shrieker')
           source=(
@@ -141,6 +141,7 @@ jobs:
           }
           PKG
 
+          TAB=$'\t'
           cat > .SRCINFO <<SRC
           pkgbase = ${AUR_PKGBASE}
           	pkgdesc = GUI client for the sculk P2P tunnel library (prebuilt binary)
@@ -156,6 +157,8 @@ jobs:
           	depends = libx11
           	depends = libglvnd
           	depends = glib2
+          ${TAB}depends = gtk3
+          ${TAB}depends = libayatana-appindicator
           	provides = shrieker
           	conflicts = shrieker
           	source = ${DEB_ASSET}::${{ steps.meta.outputs.deb_url }}

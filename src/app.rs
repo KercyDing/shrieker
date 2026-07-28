@@ -23,6 +23,7 @@ const HOST_START_TIMEOUT: Duration = Duration::from_secs(15);
 const MC_PROBE_TIMEOUT: Duration = Duration::from_secs(1);
 const MC_HEALTH_INTERVAL: Duration = Duration::from_secs(5);
 const MC_HEALTH_FAILURES_MAX: u8 = 3;
+const TRAY_EVENTS_PER_FRAME_MAX: usize = 8;
 
 #[derive(PartialEq, Clone, Copy)]
 pub(crate) enum Mode {
@@ -68,6 +69,10 @@ pub struct App {
     rt: tokio::runtime::Runtime,
     join_service: TunnelService,
     repaint: egui::Context,
+    tray: Option<crate::tray::Tray>,
+    tray_ready: bool,
+    close_to_tray: bool,
+    exit_requested: bool,
     join_rx: mpsc::UnboundedReceiver<TunnelUpdate>,
     join_stop_tx: mpsc::UnboundedSender<Result<(), String>>,
     join_stop_rx: mpsc::UnboundedReceiver<Result<(), String>>,
@@ -108,7 +113,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(rt: tokio::runtime::Runtime, repaint: egui::Context) -> Self {
+    pub fn new(rt: tokio::runtime::Runtime, repaint: egui::Context, close_to_tray: bool) -> Self {
         let loaded = settings::load();
         rust_i18n::set_locale(&loaded.preferences.locale);
         let persisted_preferences = loaded.preferences.clone();
@@ -123,6 +128,17 @@ impl App {
         if logs.is_empty() {
             logs.push(t!("profile_loaded").to_string());
         }
+        let tray = if close_to_tray {
+            match crate::tray::Tray::new(repaint.clone()) {
+                Ok(tray) => Some(tray),
+                Err(error) => {
+                    logs.push(t!("tray_failed", err = error).to_string());
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let host_scanner = match LanScanner::start() {
             Ok(scanner) => Some(scanner),
             Err(error) => {
@@ -135,6 +151,10 @@ impl App {
             rt,
             join_service,
             repaint,
+            tray,
+            tray_ready: false,
+            close_to_tray,
+            exit_requested: false,
             join_rx,
             join_stop_tx,
             join_stop_rx,
@@ -751,6 +771,46 @@ impl App {
         });
         let _ = done_rx.recv_timeout(EXIT_TIMEOUT);
     }
+
+    fn poll_tray(&mut self, ctx: &egui::Context) {
+        let mut tray_failed = false;
+        for _ in 0..TRAY_EVENTS_PER_FRAME_MAX {
+            let Some(event) = self.tray.as_ref().and_then(crate::tray::Tray::try_recv) else {
+                break;
+            };
+            match event {
+                crate::tray::Event::Ready => {
+                    self.tray_ready = true;
+                }
+                crate::tray::Event::Show => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                crate::tray::Event::Exit => {
+                    self.exit_requested = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                crate::tray::Event::Failed(error) => {
+                    self.logs.push(t!("tray_failed", err = error).to_string());
+                    self.tray_ready = false;
+                    tray_failed = true;
+                }
+            }
+        }
+        if tray_failed {
+            self.tray = None;
+        }
+    }
+
+    fn handle_close_request(&self, ctx: &egui::Context) {
+        let close_requested = ctx.input(|input| input.viewport().close_requested());
+        if !close_requested || self.exit_requested || !self.close_to_tray || !self.tray_ready {
+            return;
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+    }
 }
 
 async fn run_host(
@@ -1100,6 +1160,8 @@ fn format_event(event: &TunnelEvent) -> String {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_tray(ctx);
+        self.handle_close_request(ctx);
         self.poll();
 
         if self.stop_pending

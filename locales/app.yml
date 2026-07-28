@@ -24,6 +24,15 @@ stopping:
 idle:
   en: Idle
   zh-CN: 未运行
+tray_show:
+  en: Show Shrieker
+  zh-CN: 显示主窗口
+tray_quit:
+  en: Quit
+  zh-CN: 退出
+tray_failed:
+  en: "[-] System tray failed: %{err}"
+  zh-CN: "[-] 系统托盘初始化失败：%{err}"
 
 mc_server:
   en: Minecraft Server
