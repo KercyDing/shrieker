@@ -7,11 +7,11 @@ join:
   en: Join
   zh-CN: 加入
 settings:
+  en: Config
+  zh-CN: 配置
+preferences:
   en: Settings
   zh-CN: 设置
-preferences:
-  en: Preference
-  zh-CN: 偏好
 connected:
   en: Connected
   zh-CN: 已连接

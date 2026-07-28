@@ -84,10 +84,6 @@ fn setup_ui_style(ctx: &egui::Context) {
             egui::TextStyle::Monospace,
             egui::FontId::new(UI_FONT_SIZE, egui::FontFamily::Monospace),
         );
-        let radius = egui::CornerRadius::same(4);
-        style.visuals.widgets.inactive.corner_radius = radius;
-        style.visuals.widgets.hovered.corner_radius = radius;
-        style.visuals.widgets.active.corner_radius = radius;
     });
 }
 
@@ -220,6 +216,7 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([520.0, 480.0])
             .with_icon(load_icon()),
+        renderer: eframe::Renderer::Wgpu,
         persist_window: remember_window_state,
         ..Default::default()
     };
