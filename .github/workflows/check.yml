@@ -55,5 +55,3 @@ jobs:
       - run: cargo check
 
       - run: cargo clippy --all-targets --all-features
-
-      - run: cargo build --release
