@@ -232,7 +232,7 @@ impl App {
     }
 
     fn persist_profile(&mut self) {
-        if let Err(error) = self.profile.save() {
+        if let Err(error) = settings::save_profile(&self.profile) {
             self.logs
                 .push(t!("save_profile_err", err = error).to_string());
         }
@@ -262,7 +262,7 @@ impl App {
                 return;
             }
         };
-        let state_path = match persist::default_host_state_path() {
+        let state_path = match settings::host_state_path() {
             Ok(path) => path,
             Err(error) => {
                 self.logs.push(t!("host_failed", err = error).to_string());

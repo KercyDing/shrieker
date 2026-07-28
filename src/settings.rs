@@ -2,6 +2,12 @@ use sculk::persist::{self, Profile};
 use sculk::tunnel::SecretKey;
 use std::path::PathBuf;
 
+const APP_DIR_NAME: &str = "shrieker";
+const PROFILE_FILE: &str = "profile.toml";
+const KEY_FILE: &str = "secret.key";
+const HOST_STATE_FILE: &str = "host.state";
+const PREFERENCES_FILE: &str = "preferences.conf";
+
 pub const DEFAULT_RECONNECT_MAX_RETRIES: u32 = 10;
 pub const DEFAULT_RECONNECT_INTERVAL_SECS: u64 = 1;
 
@@ -38,21 +44,24 @@ pub struct LoadedSettings {
 /// 加载 core 配置、节点密钥和 GUI 偏好。
 pub fn load() -> LoadedSettings {
     let mut errors = Vec::new();
-    let profile = match Profile::load() {
+    let profile = match profile_path()
+        .and_then(|path| Profile::load_from(&path).map_err(|error| error.to_string()))
+    {
         Ok(profile) => profile,
         Err(error) => {
             errors.push(format!("[-] Profile load: {error}"));
             Profile::default()
         }
     };
-    let secret_key =
-        match persist::default_key_path().and_then(|path| persist::load_or_generate_key(&path)) {
-            Ok(key) => Some(key),
-            Err(error) => {
-                errors.push(format!("[-] Key load: {error}"));
-                None
-            }
-        };
+    let secret_key = match key_path()
+        .and_then(|path| persist::load_or_generate_key(&path).map_err(|error| error.to_string()))
+    {
+        Ok(key) => Some(key),
+        Err(error) => {
+            errors.push(format!("[-] Key load: {error}"));
+            None
+        }
+    };
     let preferences = load_preferences();
 
     LoadedSettings {
@@ -66,6 +75,7 @@ pub fn load() -> LoadedSettings {
 /// 保存 GUI 自身的偏好。
 pub fn save_preferences(preferences: &GuiPreferences) -> Result<(), String> {
     let path = preferences_path()?;
+    ensure_data_dir()?;
     let max_retries = preferences
         .reconnect_max_retries
         .map_or_else(|| "unlimited".to_owned(), |value| value.to_string());
@@ -122,9 +132,35 @@ fn parse_preferences(content: &str) -> GuiPreferences {
 }
 
 fn preferences_path() -> Result<PathBuf, String> {
-    persist::data_dir()
-        .map(|path| path.join("shrieker.conf"))
+    Ok(data_dir()?.join(PREFERENCES_FILE))
+}
+
+pub fn save_profile(profile: &Profile) -> Result<(), String> {
+    profile
+        .save_to(&profile_path()?)
         .map_err(|error| error.to_string())
+}
+
+pub fn host_state_path() -> Result<PathBuf, String> {
+    Ok(data_dir()?.join(HOST_STATE_FILE))
+}
+
+fn profile_path() -> Result<PathBuf, String> {
+    Ok(data_dir()?.join(PROFILE_FILE))
+}
+
+fn key_path() -> Result<PathBuf, String> {
+    Ok(data_dir()?.join(KEY_FILE))
+}
+
+fn data_dir() -> Result<PathBuf, String> {
+    dirs::data_dir()
+        .map(|path| path.join(APP_DIR_NAME))
+        .ok_or_else(|| "system data directory unavailable".to_owned())
+}
+
+fn ensure_data_dir() -> Result<(), String> {
+    std::fs::create_dir_all(data_dir()?).map_err(|error| error.to_string())
 }
 
 #[cfg(test)]
