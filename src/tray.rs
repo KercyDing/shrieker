@@ -6,6 +6,8 @@ use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIc
 const SHOW_MENU_ID: &str = "shrieker-show";
 const QUIT_MENU_ID: &str = "shrieker-quit";
 const EVENT_QUEUE_CAPACITY: usize = 16;
+#[cfg(target_os = "linux")]
+const APPINDICATOR_DEPRECATION: &str = "libayatana-appindicator is deprecated. Please use libayatana-appindicator-glib in newly written code.";
 
 /// 从系统托盘发送给主窗口的操作。
 pub(crate) enum Event {
@@ -120,6 +122,22 @@ fn run_gtk(
     tx: SyncSender<Event>,
     repaint: egui::Context,
 ) {
+    gtk::glib::log_set_writer_func(|level, fields| {
+        let field = |key| {
+            fields
+                .iter()
+                .find(|field| field.key() == key)
+                .and_then(gtk::glib::LogField::value_str)
+        };
+        let is_deprecation = level == gtk::glib::LogLevel::Warning
+            && field("GLIB_DOMAIN") == Some("libayatana-appindicator")
+            && field("MESSAGE") == Some(APPINDICATOR_DEPRECATION);
+        if is_deprecation {
+            gtk::glib::LogWriterOutput::Handled
+        } else {
+            gtk::glib::log_writer_default(level, fields)
+        }
+    });
     let result = gtk::init()
         .map_err(|error| error.to_string())
         .and_then(|()| build_icon(icon, &show_label, &quit_label));
