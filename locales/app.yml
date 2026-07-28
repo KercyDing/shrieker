@@ -2,10 +2,10 @@ _version: 2
 
 host:
   en: Host
-  zh-CN: 创建房间
+  zh-CN: 创建
 join:
   en: Join
-  zh-CN: 加入房间
+  zh-CN: 加入
 settings:
   en: Settings
   zh-CN: 设置
@@ -67,7 +67,7 @@ stop:
   zh-CN: 停止
 start_host:
   en: Start Host
-  zh-CN: 创建房间
+  zh-CN: 创建
 share_uri:
   en: Share URI
   zh-CN: 分享链接
@@ -98,7 +98,7 @@ disconnect:
   zh-CN: 断开连接
 join_btn:
   en: Join
-  zh-CN: 加入房间
+  zh-CN: 加入
 
 default_relay:
   en: Default relay
