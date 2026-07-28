@@ -70,6 +70,7 @@ pub struct App {
     pub(crate) reconnect_max_retries: u32,
     pub(crate) reconnect_interval_secs: u64,
     pub(crate) remember_window_state: bool,
+    pub(crate) close_action: settings::CloseAction,
     pub(crate) tunnel: TunnelStatus,
     pub(crate) host_status: Option<HostedServiceStatus>,
     pub(crate) theme_preference: egui::ThemePreference,
@@ -155,6 +156,7 @@ impl App {
                 .unwrap_or(settings::DEFAULT_RECONNECT_MAX_RETRIES),
             reconnect_interval_secs: loaded.preferences.reconnect_interval_secs,
             remember_window_state: loaded.preferences.remember_window_state,
+            close_action: loaded.preferences.close_action,
             profile: loaded.profile,
             secret_key: loaded.secret_key,
             logs,
@@ -658,6 +660,10 @@ impl App {
         self.remember_window_state = remember;
     }
 
+    pub(crate) fn set_close_action(&mut self, action: settings::CloseAction) {
+        self.close_action = action;
+    }
+
     pub(crate) fn save_settings(&mut self) {
         self.profile.relay.custom = self.relay_custom;
         self.profile.relay.url = (!self.relay_url.is_empty()).then(|| self.relay_url.clone());
@@ -673,6 +679,7 @@ impl App {
         self.persisted_preferences.theme = Self::theme_name(self.theme_preference).to_owned();
         self.persisted_preferences.locale = rust_i18n::locale().to_string();
         self.persisted_preferences.remember_window_state = self.remember_window_state;
+        self.persisted_preferences.close_action = self.close_action;
         self.persist_preferences();
         self.logs.push(t!("preferences_saved").to_string());
     }
@@ -763,12 +770,29 @@ impl App {
 
     fn handle_close_request(&self, ctx: &egui::Context) {
         let close_requested = ctx.input(|input| input.viewport().close_requested());
-        if !close_requested || self.exit_requested || !self.close_to_tray || !self.tray_ready {
+        if !should_hide_on_close(
+            close_requested,
+            self.exit_requested,
+            self.close_action,
+            self.close_to_tray && self.tray_ready,
+        ) {
             return;
         }
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
     }
+}
+
+fn should_hide_on_close(
+    close_requested: bool,
+    exit_requested: bool,
+    close_action: settings::CloseAction,
+    tray_available: bool,
+) -> bool {
+    close_requested
+        && !exit_requested
+        && close_action == settings::CloseAction::HideToTray
+        && tray_available
 }
 
 fn parse_local_port(auto: bool, value: &str) -> Result<LocalPort, std::num::ParseIntError> {
@@ -856,5 +880,39 @@ mod tests {
         assert!(parse_host_port("0").is_err());
         assert!(parse_host_port("65536").is_err());
         assert!(parse_host_port("invalid").is_err());
+    }
+
+    #[test]
+    fn hides_only_for_user_close_with_available_tray() {
+        assert!(should_hide_on_close(
+            true,
+            false,
+            settings::CloseAction::HideToTray,
+            true
+        ));
+        assert!(!should_hide_on_close(
+            true,
+            false,
+            settings::CloseAction::Exit,
+            true
+        ));
+        assert!(!should_hide_on_close(
+            true,
+            true,
+            settings::CloseAction::HideToTray,
+            true
+        ));
+        assert!(!should_hide_on_close(
+            true,
+            false,
+            settings::CloseAction::HideToTray,
+            false
+        ));
+        assert!(!should_hide_on_close(
+            false,
+            false,
+            settings::CloseAction::HideToTray,
+            true
+        ));
     }
 }

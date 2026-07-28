@@ -1,4 +1,5 @@
 use crate::app::{App, Mode};
+use crate::settings::CloseAction;
 use eframe::egui;
 use sculk::persist::TokenRefreshSetting;
 use sculk::tunnel::TunnelPhase;
@@ -289,6 +290,7 @@ fn render_settings(app: &mut App, ui: &mut egui::Ui) {
     ui.label(egui::RichText::new(t!("relay_settings").as_ref()).strong());
     ui.add_space(2.0);
     ui.radio_value(&mut app.relay_custom, false, t!("default_relay").as_ref());
+    ui.add_space(4.0);
     ui.radio_value(&mut app.relay_custom, true, t!("custom_relay").as_ref());
 
     if app.relay_custom {
@@ -342,6 +344,7 @@ fn render_preferences(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
     if ui.radio(&*current_locale == "zh-CN", "简体中文").clicked() {
         app.set_language("zh-CN");
     }
+    ui.add_space(4.0);
     if ui.radio(&*current_locale == "en", "English").clicked() {
         app.set_language("en");
     }
@@ -375,6 +378,26 @@ fn render_preferences(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
         app.set_theme(theme, ctx);
     }
 
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        ui.label(t!("close_action").as_ref());
+        let mut close_action = app.close_action;
+        ui.radio_value(
+            &mut close_action,
+            CloseAction::HideToTray,
+            t!("close_hide_to_tray").as_ref(),
+        );
+        ui.radio_value(
+            &mut close_action,
+            CloseAction::Exit,
+            t!("close_exit").as_ref(),
+        );
+        if close_action != app.close_action {
+            app.set_close_action(close_action);
+        }
+    });
+
+    ui.add_space(8.0);
     let mut remember_window_state = app.remember_window_state;
     if ui
         .checkbox(

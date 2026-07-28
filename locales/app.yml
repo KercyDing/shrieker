@@ -130,6 +130,15 @@ save:
 remember_window_state:
   en: Remember window size and position
   zh-CN: 记住窗口大小和位置
+close_action:
+  en: When closing
+  zh-CN: 关闭窗口时
+close_hide_to_tray:
+  en: Hide to tray
+  zh-CN: 隐藏到托盘
+close_exit:
+  en: Exit
+  zh-CN: 退出应用
 appearance:
   en: Appearance
   zh-CN: 外观
