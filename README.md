@@ -4,10 +4,9 @@
 
 ## 实机效果
 
-<div style="display: flex; gap: 10px;">
-  <img width="32%" alt="host" src="https://github.com/user-attachments/assets/e6cb514f-91c0-44c4-b1e6-39d0da984588" />
-  <img width="32%" alt="join" src="https://github.com/user-attachments/assets/04bcdf1c-2c78-45f0-9cbd-8446b8dc7cb8" />
-  <img width="32%" alt="relay" src="https://github.com/user-attachments/assets/dd1ff804-d1b0-4185-a879-7995bc1d01af" />
+<div style="display: flex; gap: 40px;">
+  <img height="360" alt="host" src="https://github.com/user-attachments/assets/47ca19d7-39ae-4b15-9d8f-1d1c07c0f685" />
+  <img height="360" alt="join" src="https://github.com/user-attachments/assets/818edaa8-8174-4dca-bc06-c5a90f7cd34a" />
 </div>
 
 ## 功能
