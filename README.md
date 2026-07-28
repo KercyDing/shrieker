@@ -6,9 +6,9 @@ Shrieker 是一个基于 [sculk](https://github.com/KercyDing/sculk) P2P 隧道�
 
 ## 界面预览
 
-<div style="display: flex; gap: 40px;">
-  <img height="360" alt="创建房间" src="https://github.com/user-attachments/assets/47ca19d7-39ae-4b15-9d8f-1d1c07c0f685" />
-  <img height="360" alt="加入房间" src="https://github.com/user-attachments/assets/818edaa8-8174-4dca-bc06-c5a90f7cd34a" />
+<div style="display: flex; gap: 10px;">
+  <img height="360" alt="host" src="https://github.com/user-attachments/assets/4339c177-0da5-40d8-b91d-80e772dac7ef" />
+  <img height="360" alt="join" src="https://github.com/user-attachments/assets/9f975526-184c-4325-b255-cf749bafc9d2" />
 </div>
 
 ## 功能
