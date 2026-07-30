@@ -44,6 +44,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve package version
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if [[ -z "${version}" ]]; then
+            echo "release version is empty" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
@@ -93,8 +105,10 @@ jobs:
           deb_path="$(find target -type f -name '*.deb' | head -n 1)"
           rpm_path="$(find target -type f -name '*.rpm' | head -n 1)"
 
-          cp "$deb_path" "${BIN_NAME}-${{ matrix.suffix }}.deb"
-          cp "$rpm_path" "${BIN_NAME}-${{ matrix.suffix }}.rpm"
+          cp "$deb_path" \
+            "${BIN_NAME}-${{ steps.package.outputs.version }}-${{ matrix.suffix }}.deb"
+          cp "$rpm_path" \
+            "${BIN_NAME}-${{ steps.package.outputs.version }}-${{ matrix.suffix }}.rpm"
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -105,7 +119,7 @@ jobs:
           app_path="$(find target -type d -name "${BIN_NAME}.app" | head -n 1)"
           ./packaging/macos/package.sh \
             "$app_path" \
-            "${BIN_NAME}-${{ matrix.suffix }}.dmg"
+            "${BIN_NAME}-${{ steps.package.outputs.version }}-${{ matrix.suffix }}.dmg"
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -118,7 +132,7 @@ jobs:
             "target/release/$env:BIN_NAME.exe" `
             -Force
           & ".\packaging\windows\package.ps1" `
-            -Version "${{ github.ref_name }}" `
+            -Version "${{ steps.package.outputs.version }}" `
             -Arch "${{ matrix.arch }}"
 
       - name: Upload artifact (Linux)
@@ -127,15 +141,16 @@ jobs:
         with:
           name: ${{ matrix.target }}-packages
           path: |
-            ${{ env.BIN_NAME }}-${{ matrix.suffix }}.deb
-            ${{ env.BIN_NAME }}-${{ matrix.suffix }}.rpm
+            ${{ env.BIN_NAME }}-${{ steps.package.outputs.version }}-${{ matrix.suffix }}.deb
+            ${{ env.BIN_NAME }}-${{ steps.package.outputs.version }}-${{ matrix.suffix }}.rpm
+          if-no-files-found: error
 
       - name: Upload artifact (macOS)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}-packages
-          path: ${{ env.BIN_NAME }}-${{ matrix.suffix }}.dmg
+          path: ${{ env.BIN_NAME }}-${{ steps.package.outputs.version }}-${{ matrix.suffix }}.dmg
           if-no-files-found: error
 
       - name: Upload artifact (Windows)
@@ -150,6 +165,18 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve package version
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if [[ -z "${version}" ]]; then
+            echo "release version is empty" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
@@ -157,6 +184,38 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: shrieker-*
+          body: |
+            ## 安装
+
+            | 系统 | 架构 | 下载 |
+            | --- | --- | --- |
+            | Windows | x86_64 | [安装程序（.exe）](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/shrieker-${{ steps.package.outputs.version }}-windows-amd64-setup.exe) |
+            | Windows | ARM64 | [安装程序（.exe）](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/shrieker-${{ steps.package.outputs.version }}-windows-arm64-setup.exe) |
+            | macOS | Intel | [磁盘映像（.dmg）](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/shrieker-${{ steps.package.outputs.version }}-darwin-amd64.dmg) |
+            | macOS | Apple Silicon | [磁盘映像（.dmg）](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/shrieker-${{ steps.package.outputs.version }}-darwin-arm64.dmg) |
+            | Linux | x86_64 | [软件包（.deb）](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/shrieker-${{ steps.package.outputs.version }}-linux-amd64.deb) / [软件包（.rpm）](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/shrieker-${{ steps.package.outputs.version }}-linux-amd64.rpm) |
+            | Linux | ARM64 | [软件包（.deb）](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/shrieker-${{ steps.package.outputs.version }}-linux-arm64.deb) / [软件包（.rpm）](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/shrieker-${{ steps.package.outputs.version }}-linux-arm64.rpm) |
+
+            ### Windows
+
+            下载对应架构的安装程序，运行后按照安装向导完成安装。
+
+            大多数 Windows 电脑使用 `x86_64`；搭载 ARM 处理器的设备使用 ARM64 版本。
+
+            ### macOS
+
+            打开 `.dmg` 文件后，将 `shrieker.app` 拖入 `Applications` 文件夹。
+
+            当前发布的应用未进行 Apple 签名和公证，macOS 可能提示应用已损坏。此时可在终端执行：
+
+            ```sh
+            xattr -dr com.apple.quarantine /Applications/shrieker.app
+            ```
+
+            若仍被拦截，可前往“系统设置 → 隐私与安全性”选择“仍要打开”，或右键应用后选择“打开”。
+
+            > 买不起 Apple 开发者账号 🥹
+
           generate_release_notes: true
 
   publish-aur:

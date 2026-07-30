@@ -24,7 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AUR_PKGBASE: shrieker-bin
-      DEB_ASSET: shrieker-linux-amd64.deb
       BOT_NAME: github-actions[bot]
       BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
     steps:
@@ -50,10 +49,16 @@ jobs:
           REPO="${{ github.repository }}"
           RELEASE_BASE="https://github.com/${REPO}/releases/download/${TAG}"
           RAW_BASE="https://raw.githubusercontent.com/${REPO}/${TAG}"
+          DEB_ASSET="shrieker-${PKGVER}-linux-amd64.deb"
+          DESKTOP_SOURCE="shrieker-${PKGVER}.desktop"
+          ICON_SOURCE="shrieker-${PKGVER}.png"
 
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
           echo "pkgver=${PKGVER}" >> "${GITHUB_OUTPUT}"
           echo "repo=${REPO}" >> "${GITHUB_OUTPUT}"
+          echo "deb_asset=${DEB_ASSET}" >> "${GITHUB_OUTPUT}"
+          echo "desktop_source=${DESKTOP_SOURCE}" >> "${GITHUB_OUTPUT}"
+          echo "icon_source=${ICON_SOURCE}" >> "${GITHUB_OUTPUT}"
           echo "deb_url=${RELEASE_BASE}/${DEB_ASSET}" >> "${GITHUB_OUTPUT}"
           echo "desktop_url=${RAW_BASE}/shrieker.desktop" >> "${GITHUB_OUTPUT}"
           echo "icon_url=${RAW_BASE}/assets/icon.png" >> "${GITHUB_OUTPUT}"
@@ -65,7 +70,7 @@ jobs:
           mkdir -p dist
 
           curl -fL --retry 5 --retry-all-errors \
-            -o "dist/${DEB_ASSET}" \
+            -o "dist/${{ steps.meta.outputs.deb_asset }}" \
             "${{ steps.meta.outputs.deb_url }}"
 
           curl -fL --retry 5 --retry-all-errors \
@@ -81,7 +86,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "deb_sha=$(sha256sum dist/${DEB_ASSET} | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          echo "deb_sha=$(sha256sum 'dist/${{ steps.meta.outputs.deb_asset }}' | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
           echo "desktop_sha=$(sha256sum dist/shrieker.desktop | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
           echo "icon_sha=$(sha256sum dist/icon.png | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
 
@@ -115,9 +120,9 @@ jobs:
           provides=('shrieker')
           conflicts=('shrieker')
           source=(
-            '${DEB_ASSET}::${{ steps.meta.outputs.deb_url }}'
-            'shrieker.desktop::${{ steps.meta.outputs.desktop_url }}'
-            'icon.png::${{ steps.meta.outputs.icon_url }}'
+            '${{ steps.meta.outputs.deb_url }}'
+            '${{ steps.meta.outputs.desktop_source }}::${{ steps.meta.outputs.desktop_url }}'
+            '${{ steps.meta.outputs.icon_source }}::${{ steps.meta.outputs.icon_url }}'
           )
           sha256sums=(
             '${{ steps.sums.outputs.deb_sha }}'
@@ -127,17 +132,17 @@ jobs:
 
           package() {
             cd "\${srcdir}"
-            bsdtar -xf "${DEB_ASSET}"
+            bsdtar -xf "${{ steps.meta.outputs.deb_asset }}"
             local data_tar
             data_tar="\$(find . -maxdepth 1 -type f -name 'data.tar.*' | head -n1)"
             if [[ -z "\${data_tar}" ]]; then
-              echo "failed to locate data.tar.* in ${DEB_ASSET}" >&2
+              echo "failed to locate data.tar.* in ${{ steps.meta.outputs.deb_asset }}" >&2
               exit 1
             fi
             bsdtar -xf "\${data_tar}" "./usr/bin/shrieker"
             install -Dm755 "\${srcdir}/usr/bin/shrieker" "\${pkgdir}/usr/bin/shrieker"
-            install -Dm644 "\${srcdir}/shrieker.desktop" "\${pkgdir}/usr/share/applications/shrieker.desktop"
-            install -Dm644 "\${srcdir}/icon.png" "\${pkgdir}/usr/share/pixmaps/shrieker.png"
+            install -Dm644 "\${srcdir}/${{ steps.meta.outputs.desktop_source }}" "\${pkgdir}/usr/share/applications/shrieker.desktop"
+            install -Dm644 "\${srcdir}/${{ steps.meta.outputs.icon_source }}" "\${pkgdir}/usr/share/pixmaps/shrieker.png"
           }
           PKG
 
@@ -161,9 +166,9 @@ jobs:
           ${TAB}depends = libayatana-appindicator
           	provides = shrieker
           	conflicts = shrieker
-          	source = ${DEB_ASSET}::${{ steps.meta.outputs.deb_url }}
-          	source = shrieker.desktop::${{ steps.meta.outputs.desktop_url }}
-          	source = icon.png::${{ steps.meta.outputs.icon_url }}
+          ${TAB}source = ${{ steps.meta.outputs.deb_url }}
+          ${TAB}source = ${{ steps.meta.outputs.desktop_source }}::${{ steps.meta.outputs.desktop_url }}
+          ${TAB}source = ${{ steps.meta.outputs.icon_source }}::${{ steps.meta.outputs.icon_url }}
           	sha256sums = ${{ steps.sums.outputs.deb_sha }}
           	sha256sums = ${{ steps.sums.outputs.desktop_sha }}
           	sha256sums = ${{ steps.sums.outputs.icon_sha }}

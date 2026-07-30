@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "0.5.1"
+#define AppVersion "0.6.1"
 #endif
 
 #ifndef AppArch
@@ -42,7 +42,7 @@ DefaultGroupName=Shrieker
 DisableProgramGroupPage=yes
 LicenseFile={#LicenseFile}
 OutputDir={#OutputDir}
-OutputBaseFilename=shrieker-{#AppSuffix}-setup
+OutputBaseFilename=shrieker-{#AppVersion}-{#AppSuffix}-setup
 ArchitecturesAllowed={#AllowedArchitectures}
 ArchitecturesInstallIn64BitMode={#AllowedArchitectures}
 Compression=lzma2

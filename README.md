@@ -24,38 +24,7 @@ Shrieker 是一个基于 [sculk](https://github.com/KercyDing/sculk) P2P 隧道�
 
 ## 安装
 
-| 系统      | 架构            | 下载最新版                                                                                                                                                                                                       |
-| ------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows | x86_64        | [安装程序（.exe）](https://github.com/KercyDing/shrieker/releases/latest/download/shrieker-windows-amd64-setup.exe)                                                                                               |
-| Windows | ARM64         | [安装程序（.exe）](https://github.com/KercyDing/shrieker/releases/latest/download/shrieker-windows-arm64-setup.exe)                                                                                               |
-| macOS   | Intel         | [磁盘映像（.dmg）](https://github.com/KercyDing/shrieker/releases/latest/download/shrieker-darwin-amd64.dmg)                                                                                                      |
-| macOS   | Apple Silicon | [磁盘映像（.dmg）](https://github.com/KercyDing/shrieker/releases/latest/download/shrieker-darwin-arm64.dmg)                                                                                                      |
-| Linux   | x86_64        | [软件包（.deb）](https://github.com/KercyDing/shrieker/releases/latest/download/shrieker-linux-amd64.deb) / [软件包（.rpm）](https://github.com/KercyDing/shrieker/releases/latest/download/shrieker-linux-amd64.rpm) |
-| Linux   | ARM64         | [软件包（.deb）](https://github.com/KercyDing/shrieker/releases/latest/download/shrieker-linux-arm64.deb) / [软件包（.rpm）](https://github.com/KercyDing/shrieker/releases/latest/download/shrieker-linux-arm64.rpm) |
-
-全部版本和更新说明可在 [Releases](https://github.com/KercyDing/shrieker/releases) 页面查看。
-
-### Windows
-
-下载对应架构的安装程序，运行后按照安装向导完成安装。
-
-大多数 Windows 电脑使用 `x86_64`；搭载 ARM 处理器的设备使用 ARM64 版本。
-
-### MacOS
-
-Apple Silicon 设备下载 `shrieker-darwin-arm64.dmg`，Intel 设备下载 `shrieker-darwin-amd64.dmg`。
-
-打开 `.dmg` 文件后，将 `shrieker.app` 拖入 `Applications` 文件夹。
-
-当前发布的应用未进行 Apple 签名和公证，MacOS 可能提示应用已损坏。此时可在终端执行：
-
-```sh
-xattr -dr com.apple.quarantine /Applications/shrieker.app
-```
-
-若仍被拦截，可前往“系统设置 → 隐私与安全性”选择“仍要打开”，或右键应用后选择“打开”。
-
-> 买不起 Apple 开发者账号 🥹
+[下载最新版](https://github.com/KercyDing/shrieker/releases/latest)
 
 ### Arch Linux
 
