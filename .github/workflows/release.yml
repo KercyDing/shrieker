@@ -216,6 +216,8 @@ jobs:
 
             > 买不起 Apple 开发者账号 🥹
 
+            ---
+
           generate_release_notes: true
 
   publish-aur:
