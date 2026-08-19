@@ -1,6 +1,6 @@
 [package]
 name = "shrieker"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2024"
 description = "A GUI client for the sculk P2P tunnel library"
 license = "GPL-3.0"
@@ -15,6 +15,7 @@ icon = ["assets/icon.icns", "assets/icon.ico"]
 
 [package.metadata.deb]
 copyright = "Copyright © 2026 KercyDing"
+maintainer = "KercyDing <dkx215417@gmail.com>"
 depends = "$auto, libayatana-appindicator3-1 | libappindicator3-1"
 assets = [
     ["target/release/shrieker", "usr/bin/", "755"],

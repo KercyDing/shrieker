@@ -1,17 +1,60 @@
-# Run formatting, compilation, and lint checks
+!version 0.4
+!var cargo_flags = "--all-targets"
+
+[help] Build gds3d
+[pass] Build complete.
+[fail] Build failed.
+build(profile = "dev"):
+    cargo build --profile {{profile}}
+
+[help] Run gds3d
+[fail] Run failed.
+run(profile = "dev"):
+    cargo run --profile {{profile}}
+
+[help] Run CI
+[desc] Format, check, lint, test, and build.
+[pass] CI passed.
+[fail] CI failed.
+ci()
+    & fmt
+    & check
+    & clippy
+    & test
+    & build("release")
+
+[help] Format code
+[pass] Format complete.
+[fail] Format failed.
+fmt():
+    cargo fmt --all
+
+[help] Check code
+[pass] Check passed.
+[fail] Check failed.
 check():
-    cargo fmt --all -- --check
-    cargo check --all-targets
-    cargo clippy --all-targets -- -D warnings
+    cargo check {{cargo_flags}}
 
-# Run all checks and tests
-ci() & check:
-    cargo test
+[help] Lint code
+[pass] Clippy passed.
+[fail] Clippy failed.
+clippy():
+    cargo clippy {{cargo_flags}} -- -D warnings
 
-# Build in release mode
-build():
-    cargo build --release
+[help] Run tests
+[desc] Use cargo-nextest.
+[pass] Tests passed.
+[fail] Tests failed.
+test() ? @has("cargo-nextest"):
+    cargo nextest run --no-fail-fast {{cargo_flags}}
 
-# Run in release mode
-run():
-    cargo run --release
+[desc] Fall back to cargo test.
+test():
+    cargo test --no-fail-fast {{cargo_flags}}
+
+[help] Clean builds
+[desc] Remove Cargo build artifacts.
+[pass] Clean complete.
+[fail] Clean failed.
+clean():
+    cargo clean
